@@ -1,0 +1,392 @@
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --ground: #F3F5F8; --surface: #FFFFFF; --surface-2: #E9EDF2; --ink: #161C26; --ink-2: #48525F;
+    --muted: #717B88; --line: #D8DEE6; --line-2: #C3CBD5;
+    --accent: #2A4FC4; --accent-soft: #E3E9FA;
+    --done: #157F5C; --done-soft: #DCF1E7; --warn: #A3670C; --warn-soft: #FBEBCB;
+    --bad: #B4261F; --bad-soft: #F8DEDB; --pend: #8B95A2; --pend-soft: #E9EDF2;
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0E1218; --surface: #151A22; --surface-2: #1D242E; --ink: #E8EDF4; --ink-2: #B6BFCB;
+      --muted: #818C9A; --line: #2A323E; --line-2: #3A4452;
+      --accent: #93ABF6; --accent-soft: #1E2A4D;
+      --done: #4FCB98; --done-soft: #153426; --warn: #E6B45B; --warn-soft: #3A2B10;
+      --bad: #F0867D; --bad-soft: #3E1A18; --pend: #7F8A98; --pend-soft: #1D242E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0E1218; --surface: #151A22; --surface-2: #1D242E; --ink: #E8EDF4; --ink-2: #B6BFCB;
+    --muted: #818C9A; --line: #2A323E; --line-2: #3A4452;
+    --accent: #93ABF6; --accent-soft: #1E2A4D;
+    --done: #4FCB98; --done-soft: #153426; --warn: #E6B45B; --warn-soft: #3A2B10;
+    --bad: #F0867D; --bad-soft: #3E1A18; --pend: #7F8A98; --pend-soft: #1D242E;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-block: 32px 80px; padding-inline: 20px; display: grid; gap: 24px; }
+  a { color: var(--accent); text-underline-offset: 3px; }
+  code, .mono { font-family: var(--mono); font-size: .88em; }
+  code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  h1 { font-size: clamp(26px, 3.4vw, 36px); font-weight: 700; letter-spacing: -.015em; line-height: 1.15; }
+  h2 { font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
+  h3 { font-size: 14px; font-weight: 600; color: var(--ink-2); margin-top: 22px; margin-bottom: 8px; }
+
+  /* header */
+  .head { display: grid; gap: 10px; }
+  .crumbs { font-size: 13.5px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .crumbs .mono { color: var(--ink-2); }
+  .titlerow { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
+  .lede { color: var(--ink-2); max-width: 66ch; margin: 0; font-size: 16.5px; }
+  .state { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; padding: 5px 12px; border-radius: 999px; background: var(--pend-soft); color: var(--ink-2); white-space: nowrap; }
+  .state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--pend); }
+  .state.done { background: var(--done-soft); color: var(--done); } .state.done::before { background: var(--done); }
+  .state.active { background: var(--warn-soft); color: var(--warn); } .state.active::before { background: var(--warn); }
+  .state.bad { background: var(--bad-soft); color: var(--bad); } .state.bad::before { background: var(--bad); }
+
+  /* telemetry strip */
+  .strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .tile { background: var(--surface); padding: 12px 14px; display: grid; gap: 2px; }
+  .tile .v { font-size: 22px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .tile .k { font-size: 12.5px; color: var(--muted); }
+  .tile .s { font-size: 12px; color: var(--muted); }
+
+  /* ALYDAS-173, S6. The short version, at the top: what happened and where it
+     stands beside what is waiting on you, two matched cards that stack on a phone. */
+  .short { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .short .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+  .short h2 { font-size: 16px; margin-bottom: 10px; }
+  .short h2 small { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+  .short ul { list-style: none; padding: 0; display: grid; gap: 8px; }
+  .short ul li { margin: 0; overflow-wrap: anywhere; }
+  .short .stands { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font-weight: 600; overflow-wrap: anywhere; }
+  .short .need { padding: 10px 12px; border-radius: 8px; background: var(--warn-soft); }
+  .short .need .what { font-weight: 600; }
+  .short .need .why { display: block; color: var(--ink-2); font-size: 14px; }
+  @media (max-width: 640px) { .short { grid-template-columns: 1fr; } }
+
+  /* rail */
+  .railwrap { overflow-x: auto; }
+  [role="tablist"] { display: flex; gap: 6px; min-width: max-content; padding-bottom: 2px; }
+  [role="tab"] { appearance: none; font: inherit; cursor: pointer; text-align: left; color: var(--ink-2);
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px 8px 10px;
+    display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; min-width: 118px; }
+  [role="tab"]:hover { border-color: var(--line-2); }
+  [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  [role="tab"][aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); box-shadow: inset 0 0 0 1px var(--accent); }
+  [role="tab"] .num { grid-row: 1 / 3; width: 22px; height: 22px; display: grid; place-items: center; font-family: var(--mono); font-size: 12px; border-radius: 5px; background: var(--pend-soft); color: var(--muted); }
+  [role="tab"].gate .num { border-radius: 3px; transform: rotate(45deg); }
+  [role="tab"].gate .num span { transform: rotate(-45deg); display: block; }
+  [role="tab"].s-done .num { background: var(--done-soft); color: var(--done); }
+  [role="tab"].s-active .num, [role="tab"].s-skipped .num { background: var(--warn-soft); color: var(--warn); }
+  [role="tab"].s-failed .num, [role="tab"].s-blocked .num { background: var(--bad-soft); color: var(--bad); }
+  [role="tab"] .name { font-weight: 600; font-size: 13.5px; line-height: 1.2; white-space: nowrap; }
+  [role="tab"] .chip { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; display: flex; gap: 8px; min-height: 1.2em; }
+  [role="tab"] .chip .st { font-weight: 500; }
+  /* ALYDAS-173, S1. The phase's plain line under its name and chip, so the rail alone reads as the story. */
+  [role="tab"] .plain { grid-column: 1 / -1; margin-top: 4px; max-width: 26ch; font-size: 12px; line-height: 1.35; color: var(--muted); white-space: normal; }
+  [role="tab"].s-done .chip .st { color: var(--done); } [role="tab"].s-active .chip .st, [role="tab"].s-skipped .chip .st { color: var(--warn); }
+  [role="tab"].s-failed .chip .st, [role="tab"].s-blocked .chip .st { color: var(--bad); }
+
+  /* timeline */
+  .timeline { display: grid; gap: 6px; }
+  .tl-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; background: var(--surface-2); }
+  .tl-bar div { min-width: 2px; height: 100%; }
+  .tl-labels { display: flex; gap: 2px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .tl-labels div { min-width: 2px; overflow: hidden; white-space: nowrap; }
+  .tl-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
+  .tl-legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--pend); }
+  .tl-legend .l-done::before { background: var(--done); } .tl-legend .l-active::before, .tl-legend .l-skipped::before { background: var(--warn); }
+  .tl-legend .l-failed::before, .tl-legend .l-blocked::before { background: var(--bad); }
+  .c-done { background: var(--done); } .c-active, .c-skipped { background: var(--warn); } .c-failed, .c-blocked { background: var(--bad); } .c-pending { background: var(--line-2); }
+
+  /* panel */
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 24px 26px 28px; }
+  .p-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+  .p-head .kind { font-size: 13px; color: var(--muted); margin-right: 8px; }
+  .p-meta { font-size: 13.5px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; }
+  .p-meta b { color: var(--ink-2); font-weight: 500; }
+  .summary { margin: 14px 0 0; max-width: 72ch; color: var(--ink); font-size: 16px; }
+  /* ALYDAS-173, S2. The scene: what the phase is for, then where the story is, on top of the panel. */
+  .scene { display: grid; gap: 10px; margin-top: 14px; padding: 14px 16px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+  .scene p { margin: 0; max-width: 72ch; }
+  .scene .purpose { color: var(--muted); font-size: 14px; }
+  .scene b { font-weight: 600; color: var(--ink); }
+  /* ALYDAS-173, S2. Frame's backstory and its two lists, under the scene. */
+  .backstory { margin: 10px 0 0; max-width: 72ch; color: var(--ink-2); white-space: pre-line; }
+  /* ALYDAS-173, S3. The Story view's packets: the lede, and each entry's second line. */
+  .lede { margin: 14px 0 0; max-width: 72ch; font-size: 15px; }
+  .verdict { font-size: 12px; color: var(--muted); }
+  .sub { display: block; font-size: 13px; color: var(--muted); }
+  /* ALYDAS-173, S4. The phase's steps: a box per step, ticked when done, ringed
+     while doing, empty while todo, each state also said in words for a reader
+     that does not see the box. */
+  ul.steps { list-style: none; padding: 0; display: grid; gap: 6px; }
+  ul.steps li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start; margin: 0; }
+  .tick { width: 16px; height: 16px; margin-top: 3px; border-radius: 5px; border: 1.5px solid var(--line-2); display: grid; place-items: center; }
+  ul.steps li[data-s="done"] .tick { background: var(--done); border-color: var(--done); }
+  ul.steps li[data-s="done"] .tick::after { content: ""; width: 8px; height: 4px; border: 2px solid var(--surface); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+  ul.steps li[data-s="doing"] .tick { border-color: var(--accent); }
+  ul.steps li[data-s="doing"] .tick::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  ul.steps li[data-s="doing"] .st-text { color: var(--accent); font-weight: 600; }
+  ul.steps li[data-s="todo"] { color: var(--muted); }
+  /* ALYDAS-225, K2. A dropped step has no box, so nothing reads as ticked or
+     still to tick: a short rule in its place, its text struck through in muted
+     ink, and its reason under it. */
+  .norule { width: 10px; margin: 11px 0 0 3px; border-top: 1.5px solid var(--line-2); }
+  ul.steps li[data-s="dropped"] .st-text { color: var(--muted); text-decoration: line-through; }
+  .stepcount { font-weight: 400; color: var(--muted); margin-left: 6px; font-size: 13px; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .note { border-left: 3px solid var(--warn); background: var(--warn-soft); padding: 8px 14px; border-radius: 0 6px 6px 0; margin-top: 14px; font-size: 14.5px; }
+  .note.bad { border-color: var(--bad); background: var(--bad-soft); }
+  ul { margin: 0; padding-left: 20px; } li { margin: 4px 0; }
+  ul.produced { list-style: none; padding: 0; display: grid; gap: 6px; }
+  ul.produced li { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: baseline; font-size: 14px; }
+  ul.produced .path { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); word-break: break-all; }
+  ul.produced .pnote { color: var(--muted); }
+  /* ALYDAS-173, S5. A produced file named as a document: its title and the line on what is in it, the path muted under them. */
+  ul.produced li.doc { grid-template-columns: 1fr; gap: 2px; }
+  ul.produced .dtitle { font-weight: 600; }
+  ul.produced .dabout { color: var(--muted); }
+  ul.produced li.doc .path { color: var(--muted); font-size: 12px; }
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; margin-top: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th { text-align: left; font-weight: 600; font-size: 12.5px; color: var(--ink-2); background: var(--surface-2); padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.n { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; background: var(--pend-soft); color: var(--ink-2); }
+  .pill.good { background: var(--done-soft); color: var(--done); } .pill.warn { background: var(--warn-soft); color: var(--warn); } .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .agents td:first-child { max-width: 42ch; }
+  details { margin-top: 4px; } summary { cursor: pointer; color: var(--ink-2); font-size: 14px; font-weight: 500; }
+  .log { font-size: 13px; } .log td:last-child { max-width: 62ch; }
+  .empty { color: var(--muted); font-size: 15px; margin: 12px 0 0; }
+  @media (max-width: 640px) { .panel { padding: 18px 16px 22px; } .tile .v { font-size: 19px; } }
+  @media (prefers-reduced-motion: no-preference) { [role="tab"] { transition: border-color .12s ease, background-color .12s ease; } }
+</style>
+
+<div class="wrap">
+  <header class="head" id="head"></header>
+  <section class="short" id="short" aria-label="The short version"></section>
+  <section class="strip" id="strip" aria-label="Run totals"></section>
+  <div class="railwrap"><div role="tablist" aria-label="Phases" id="rail"></div></div>
+  <section class="timeline" id="timeline" aria-label="Wall time by phase"></section>
+  <div id="panels"></div>
+  <details><summary>Run log</summary><div class="tw"><table class="log" id="log"></table></div></details>
+</div>
+
+<script id="run-data" type="application/json">/*__RUN__*/</script>
+<script>
+(function () {
+  var run = JSON.parse(document.getElementById('run-data').textContent);
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  var rich = function (s) { return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>'); };
+  var dur = function (s) { if (s == null) return '–'; s = Math.round(s); if (s < 60) return s + 's'; var m = Math.floor(s / 60); if (m < 60) return m + 'm'; var h = Math.floor(m / 60); return h + 'h ' + String(m % 60).padStart(2, '0') + 'm'; };
+  var k = function (n) { if (n == null) return '–'; if (n < 1000) return String(n); if (n < 10000) return (n / 1000).toFixed(1) + 'k'; if (n < 1e6) return Math.round(n / 1000) + 'k'; return (n / 1e6).toFixed(1) + 'M'; };
+  var usd = function (x) { if (x == null) return '–'; return x >= 10 ? '$' + Math.round(x).toLocaleString() : '$' + x.toFixed(2); };
+  var when = function (iso) { if (!iso) return ''; var d = new Date(iso); return isNaN(d) ? iso : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); };
+  var STATE = { pending: 'pending', active: 'running', done: 'done', failed: 'failed', skipped: 'skipped', blocked: 'blocked' };
+  var GATE_STATE = { done: 'passed' };
+  var stateWord = function (p) { return (p.kind === 'gate' && GATE_STATE[p.status]) || STATE[p.status] || p.status; };
+  var tone = function (s) { return s === 'done' ? 'done' : (s === 'active' || s === 'skipped') ? 'active' : (s === 'failed' || s === 'blocked') ? 'bad' : ''; };
+  var PILLS = { good: /^(observed|confirmed|yes|green|caught|fixed|landed|passed|done|accepted|closed)$/i,
+                warn: /^(partial|partially confirmed|pending|estimated|skipped|forced|deferred|defer|fix-now|running|amber)$/i,
+                bad:  /^(not confirmed|no|red|not caught|failed|blocks|blocked|open|not today)$/i };
+  var cell = function (s) { for (var t in PILLS) { if (PILLS[t].test(String(s).trim())) return '<span class="pill ' + t + '">' + esc(s) + '</span>'; } return rich(s); };
+
+  // header
+  var cur = null; run.phases.forEach(function (p) { if (p.status === 'active') cur = cur || p; });
+  if (!cur) { run.phases.forEach(function (p) { if (p.status !== 'pending') cur = p; }); }
+  cur = cur || run.phases[0];
+  var headState = run.phases[9].status === 'done' ? 'done' : (run.phases.some(function (p) { return p.status === 'failed' || p.status === 'blocked'; }) ? 'bad' : (cur.status === 'active' ? 'active' : ''));
+  var headWord = run.phases[9].status === 'done' ? 'Finished' : ((cur.kind === 'gate' ? 'Gate ' : 'Phase ') + cur.n + ' ' + stateWord(cur));
+  $('head').innerHTML =
+    '<div class="crumbs"><span>feature-pipeline</span>' + (run.repo ? '<span class="mono">' + esc(run.repo) + '</span>' : '') + (run.branch ? '<span class="mono">' + esc(run.branch) + '</span>' : '') + '<span>started ' + esc(run.date) + '</span></div>' +
+    '<div class="titlerow"><h1>' + esc(run.title) + '</h1><span class="state ' + headState + '">' + esc(headWord) + '</span></div>' +
+    (run.goal ? '<p class="lede">' + rich(run.goal) + '</p>' : '');
+
+  // ALYDAS-173, S6. The short version: what happened, where it stands, and
+  // what is waiting on you, as `story` wrote them. Nothing written, no block.
+  var told = run.story || {};
+  var happened = told.happened || [], needs = told.needs_you || [];
+  if (happened.length || told.stands || needs.length) {
+    $('short').innerHTML =
+      '<div class="card"><h2>What happened</h2>' +
+        (happened.length ? '<ul>' + happened.map(function (h) { return '<li>' + rich(h) + '</li>'; }).join('') + '</ul>' : '') +
+        (told.stands ? '<p class="stands">' + rich(told.stands) + '</p>' : '') + '</div>' +
+      '<div class="card"><h2>Waiting on you <small>' + needs.length + '</small></h2>' +
+        (needs.length ? '<ul>' + needs.map(function (n) { return '<li class="need"><span class="what">' + rich(n.what) + '</span>' + (n.why ? '<span class="why">' + rich(n.why) + '</span>' : '') + '</li>'; }).join('') + '</ul>'
+                      : '<p class="empty">Nothing is waiting on you.</p>') + '</div>';
+  } else { $('short').remove(); }
+
+  // telemetry strip
+  var T = run.telemetry || {}; var tok = T.tokens || {};
+  var tiles = [
+    ['Wall time', dur(T.wall_s), T.sessions && T.sessions.length ? T.sessions.length + (T.sessions.length === 1 ? ' session' : ' sessions') : ''],
+    ['Working time', dur(T.active_s || null), 'gaps over 3 min excluded' + (T.api_s != null ? '; ' + dur(T.api_s) + ' API time' : '')],
+    ['Tokens out', k(tok.output), k((tok.input || 0) + (tok.cache_read || 0) + (tok.cache_write || 0)) + ' in, incl. cache'],
+    ['Cost', usd(T.cost_known ? T.cost_usd : null), T.session_cost_usd != null ? usd(T.session_cost_usd) + ' whole session' + (T.sessions && T.sessions.length > 1 ? 's' : '') : (T.cost_note || '')],
+    ['Agents', String(T.agents || 0), 'dispatched across phases']
+  ];
+  $('strip').innerHTML = tiles.map(function (t) { return '<div class="tile"><div class="v">' + esc(t[1]) + '</div><div class="k">' + esc(t[0]) + '</div>' + (t[2] ? '<div class="s">' + esc(t[2]) + '</div>' : '') + '</div>'; }).join('');
+
+  // rail + panels
+  var tabs = [], panels = [];
+  var items = run.phases.slice(); items.push({ n: 'D', key: 'deferred', name: 'Deferred', kind: 'list', status: (run.deferred || []).length ? 'done' : 'pending', deferred: true });
+  items.forEach(function (p) {
+    var t = p.telemetry || {}; var chip = '';
+    if (p.deferred) chip = (run.deferred || []).length ? (run.deferred.length + ' items') : '';
+    else if (t.wall_s != null) chip = '<span>' + dur(t.wall_s) + '</span>' + (t.tokens && t.tokens.output ? '<span>' + k(t.tokens.output) + '</span>' : '');
+    var b = document.createElement('button');
+    b.setAttribute('role', 'tab'); b.id = 't' + p.n; b.setAttribute('aria-controls', 'p' + p.n); b.setAttribute('aria-selected', 'false');
+    b.className = (p.kind === 'gate' ? 'gate ' : '') + 's-' + p.status;
+    b.innerHTML = '<span class="num"><span>' + esc(p.n) + '</span></span><span class="name">' + esc(p.name) + '</span><span class="chip"><span class="st">' + (p.deferred ? '' : esc(stateWord(p))) + '</span>' + chip + '</span>' + (p.plain && String(p.plain).trim() ? '<span class="plain">' + esc(p.plain) + '</span>' : '');
+    $('rail').appendChild(b); tabs.push(b);
+    var s = document.createElement('section'); s.className = 'panel'; s.setAttribute('role', 'tabpanel'); s.id = 'p' + p.n; s.setAttribute('aria-labelledby', 't' + p.n); s.hidden = true;
+    s.innerHTML = p.deferred ? deferredPanel() : phasePanel(p);
+    $('panels').appendChild(s); panels.push(s);
+  });
+
+  function section(title, list, fn) { if (!list || !list.length) return ''; return '<h3>' + esc(title) + '</h3><ul>' + list.map(function (x) { return '<li>' + (fn ? fn(x) : rich(x)) + '</li>'; }).join('') + '</ul>'; }
+  function phasePanel(p) {
+    var t = p.telemetry || {}; var tk = t.tokens || {};
+    var h = '<div class="p-head"><h2><span class="kind">' + (p.kind === 'gate' ? 'Gate' : 'Phase') + ' ' + p.n + '</span>' + esc(p.name) + '</h2><span class="state ' + tone(p.status) + '">' + esc(stateWord(p)) + (p.forced ? ', forced' : '') + '</span></div>';
+    var meta = [];
+    if (p.started) meta.push('<span>' + esc(when(p.started)) + (p.ended ? ' to ' + esc(when(p.ended)) : ', still open') + '</span>');
+    if (t.wall_s != null) meta.push('<span><b>' + dur(t.wall_s) + '</b> wall' + (t.active_s ? ', <b>' + dur(t.active_s) + '</b> working' : '') + '</span>');
+    if (tk.output) meta.push('<span><b>' + k(tk.output) + '</b> out, <b>' + k((tk.input || 0) + (tk.cache_read || 0) + (tk.cache_write || 0)) + '</b> in</span>');
+    if (t.cost_known) meta.push('<span><b>' + usd(t.cost_usd) + '</b></span>');
+    if (t.agents) meta.push('<span><b>' + t.agents + '</b> agent' + (t.agents === 1 ? '' : 's') + '</span>');
+    if (meta.length) h += '<div class="p-meta">' + meta.join('') + '</div>';
+    // ALYDAS-173, S2. The scene opens the panel: what the phase is for on every
+    // phase, pending ones too, then where the story is once it has started.
+    var pending = p.status === 'pending';
+    var scene = [];
+    if (p.purpose) scene.push('<p class="purpose"><b>What this phase is for.</b> ' + esc(p.purpose) + '</p>');
+    if (!pending && p.scene) scene.push('<p class="where"><b>Where the story is.</b> ' + esc(p.scene) + '</p>');
+    if (scene.length) h += '<div class="scene">' + scene.join('') + '</div>';
+    if (pending) return h + '<p class="empty">Not reached.</p>';
+    if (p.n === 0) {
+      if (p.backstory) h += '<h3>The backstory</h3><p class="backstory">' + esc(p.backstory) + '</p>';
+      h += section('What "fixed" means', p.fixed_means);
+      h += section("What won't change", p.wont_change);
+    }
+    // ALYDAS-173, S3. The Story view's packets, under the scene: the lede, what
+    // the numbers mean, what was weighed, what was assumed, what was left out,
+    // and what went wrong with what was done about it.
+    if (p.lede) h += '<p class="lede">' + esc(p.lede) + '</p>';
+    // ALYDAS-173, S4. The steps, after the lede, with how many are done.
+    var steps = (p.steps || []).filter(function (x) { return x && x.text; });
+    if (steps.length) {
+      // ALYDAS-225, K2. A dropped step is counted apart and drawn with no box.
+      var STEP_WORDS = { done: 'Done: ', doing: 'Doing now: ', todo: 'To do: ', dropped: 'Dropped: ' };
+      var doneCount = steps.filter(function (x) { return x.state === 'done'; }).length;
+      var droppedCount = steps.filter(function (x) { return x.state === 'dropped'; }).length;
+      h += '<h3>Steps<span class="stepcount">' + doneCount + ' of ' + steps.length + ' done' +
+        (droppedCount ? ', ' + droppedCount + ' dropped' : '') + '</span></h3><ul class="steps">' +
+        steps.map(function (x) {
+          var s = STEP_WORDS[x.state] ? x.state : 'todo';
+          var mark = s === 'dropped' ? 'norule' : 'tick';
+          return '<li data-s="' + s + '"><span class="' + mark + '" aria-hidden="true"></span><span><span class="vh">' + STEP_WORDS[s] + '</span><span class="st-text">' +
+            esc(x.text) + '</span>' + (x.sub ? '<span class="sub">' + esc(x.sub) + '</span>' : '') + '</span></li>';
+        }).join('') + '</ul>';
+    }
+    h += section('What the numbers mean', p.numbers, function (x) { return '<b>' + esc(x.figure) + '</b>' + (x.means ? ' ' + esc(x.means) : ''); });
+    h += section('What was weighed', p.options, function (x) { return '<span class="verdict">' + (x.chosen ? 'Chosen' : 'Not chosen') + '</span> <b>' + esc(x.name) + '</b>' + (x.why ? '<span class="sub">' + esc(x.why) + '</span>' : ''); });
+    h += section('Assumed', p.assumed, function (x) { return esc(x.text) + (x.later ? '<span class="sub">Later: ' + esc(x.later) + '</span>' : ''); });
+    h += section('Left out on purpose', p.left_out, esc);
+    h += section('What went wrong, and what we did', p.problems, function (x) { return esc(x.what) + (x.did ? '<span class="sub">What we did: ' + esc(x.did) + '</span>' : ''); });
+    if (p.summary) h += '<p class="summary">' + rich(p.summary) + '</p>';
+    if (p.status === 'skipped') h += '<div class="note"><b>Skipped.</b> ' + rich(p.skip_reason || 'No reason recorded.') + '</div>';
+    if (p.forced) h += '<div class="note"><b>Closed by force.</b> ' + rich(p.forced) + '</div>';
+    if (p.status === 'failed' || p.status === 'blocked') h += '<div class="note bad"><b>' + esc(stateWord(p)) + '.</b> ' + rich(p.summary ? '' : 'No summary recorded.') + '</div>';
+    if (p.table && p.table.columns && p.table.rows && p.table.rows.length) {
+      h += '<div class="tw"><table><thead><tr>' + p.table.columns.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+        p.table.rows.map(function (r) { return '<tr>' + r.map(function (c, i) { return i === 0 && r.length > 1 ? '<td class="n">' + esc(c) + '</td>' : '<td>' + cell(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
+    }
+    h += section('Decided', p.decided);
+    h += section('Measured', p.measured);
+    h += section('Went wrong, kept in', p.wrong);
+    h += section('Overruled', p.overruled);
+    if (p.produced && p.produced.length) h += '<h3>Produced</h3><ul class="produced">' + p.produced.map(function (e) { if (e.title) return '<li class="doc"><span class="dtitle">' + esc(e.title) + '</span>' + (e.about ? '<span class="dabout">' + esc(e.about) + '</span>' : '') + '<span class="path">' + esc(e.path) + '</span></li>'; return '<li><span class="path">' + esc(e.path) + '</span><span class="pnote">' + rich(e.note) + '</span></li>'; }).join('') + '</ul>';
+    if (t.agent_list && t.agent_list.length) {
+      h += '<h3>Agents</h3><div class="tw"><table class="agents"><thead><tr><th>Task</th><th>Model</th><th>Wall</th><th>Tokens out</th><th>Cost</th></tr></thead><tbody>' +
+        t.agent_list.map(function (a) { return '<tr><td>' + esc(a.description || a.id || 'agent') + '</td><td class="n">' + esc(String(a.model || '').replace(/^claude-/, '')) + '</td><td class="n">' + dur(a.wall_s) + '</td><td class="n">' + k(a.output) + '</td><td class="n">' + (a.cost_usd != null ? usd(a.cost_usd) : '–') + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    }
+    if (p.next && p.status !== 'pending') h += '<h3>Next</h3><ul><li>' + rich(p.next) + '</li></ul>';
+    return h;
+  }
+  function deferredPanel() {
+    var d = run.deferred || [];
+    var h = '<div class="p-head"><h2><span class="kind">List</span>Deferred</h2></div>';
+    if (!d.length) return h + '<p class="empty">Nothing deferred yet.</p>';
+    return h + '<div class="tw"><table><thead><tr><th>Cut</th><th>What finishing it needs</th></tr></thead><tbody>' + d.map(function (x) { return '<tr><td>' + rich(x.item) + '</td><td>' + rich(x.needs) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+  }
+
+  // timeline
+  var withTime = run.phases.filter(function (p) { return p.telemetry && p.telemetry.wall_s != null; });
+  var useActive = withTime.some(function (p) { return p.telemetry.active_s > 0; });
+  var tsec = function (p) { return useActive ? (p.telemetry.active_s || 0) : p.telemetry.wall_s; };
+  var total = withTime.reduce(function (a, p) { return a + tsec(p); }, 0);
+  if (total > 0) {
+    var bars = '', labels = '';
+    withTime.forEach(function (p) {
+      var pct = Math.max(100 * tsec(p) / total, 0.6);
+      bars += '<div class="c-' + p.status + '" style="flex:0 0 ' + pct.toFixed(2) + '%" title="' + esc(p.n + ' ' + p.name + ': ' + dur(tsec(p)) + (useActive ? ' working, ' + dur(p.telemetry.wall_s) + ' wall' : '') + ', ' + stateWord(p)) + '"></div>';
+      labels += '<div style="flex:0 0 ' + pct.toFixed(2) + '%">' + (pct >= 4 ? esc(p.n) : '') + '</div>';
+    });
+    var seen = {}; withTime.forEach(function (p) { seen[p.status] = 1; });
+    var legend = Object.keys(seen).map(function (s) { return '<span class="l-' + s + '">' + esc(s === 'done' ? 'done or passed' : STATE[s]) + '</span>'; }).join('');
+    $('timeline').innerHTML = '<div class="tl-bar">' + bars + '</div><div class="tl-labels">' + labels + '</div><div class="tl-legend">' + legend + '<span style="margin-left:auto">' + dur(total) + ' across phases</span></div>';
+  } else { $('timeline').remove(); }
+
+  // log: ledger events plus agent starts and landings derived from the transcripts
+  var LOGWORD = { start: 'phase opened', done: 'phase closed', failed: 'phase failed', skipped: 'phase skipped', blocked: 'phase blocked',
+    result: 'result', decided: 'decided', measured: 'measured', wrong: 'went wrong', overruled: 'overruled', wrote: 'wrote', row: 'table row',
+    deferred: 'deferred', set: 'set', check: 'check failed', log: 'note', dispatched: 'dispatched', landed: 'landed', decision: 'decision', escalated: 'escalated' };
+  var LOGTONE = { done: 'good', wrote: 'good', landed: 'good', failed: 'bad', blocked: 'bad', check: 'bad', wrong: 'bad', escalated: 'bad',
+    skipped: 'warn', overruled: 'warn', start: '', dispatched: '' };
+  var rows = (run.events || []).map(function (e) {
+    var kind = e.event; var note = e.note || '';
+    if (e.forced) { kind = kind === 'done' ? 'done' : kind; note = (note ? note + ' ' : '') + '(forced: ' + e.forced + ')'; }
+    return { ts: e.ts, phase: e.phase, kind: kind, word: LOGWORD[kind] || kind, tone: e.forced ? 'warn' : (LOGTONE[kind] || ''), note: note };
+  });
+  ((run.telemetry || {}).agent_rows || []).forEach(function (a) {
+    if (a.first) rows.push({ ts: a.first, phase: a.phase, kind: 'dispatched', word: 'agent dispatched', tone: '', note: a.description || a.id || 'agent' });
+    if (a.last) rows.push({ ts: a.last, phase: a.phase, kind: 'landed', word: 'agent landed', tone: 'good', note: (a.description || 'agent') + ': ' + dur(a.wall_s) + ', ' + k(a.output) + ' out' + (a.cost_usd != null ? ', ' + usd(a.cost_usd) : '') });
+  });
+  var RANK = { start: 0, done: 2, failed: 2, skipped: 2, blocked: 2 };
+  var phaseName = function (n) { var p = run.phases.filter(function (x) { return String(x.n) === String(n); })[0]; return p ? p.name : ''; };
+  rows.forEach(function (r) { if (!r.note && (r.kind in RANK)) r.note = phaseName(r.phase); r.rank = r.kind in RANK ? RANK[r.kind] : 1; });
+  rows.sort(function (a, b) { return a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : a.rank - b.rank; });
+  var logSummary = document.querySelector('details > summary');
+  if (logSummary) logSummary.textContent = 'Run log, ' + rows.length + ' entries';
+  $('log').innerHTML = '<thead><tr><th>When</th><th>Phase</th><th>What</th><th>Detail</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(function (r) { return '<tr><td class="n">' + esc(when(r.ts)) + '</td><td class="n">' + esc(r.phase) + '</td><td><span class="pill ' + r.tone + '">' + esc(r.word) + '</span></td><td>' + rich(r.note) + '</td></tr>'; }).join('') : '<tr><td colspan="4" class="empty">No events yet.</td></tr>') + '</tbody>';
+
+  // tabs
+  function select(i, focus, scroll) {
+    tabs.forEach(function (t, j) { var on = i === j; t.setAttribute('aria-selected', on ? 'true' : 'false'); t.tabIndex = on ? 0 : -1; panels[j].hidden = !on; });
+    if (focus) tabs[i].focus({ preventScroll: true });
+    if (scroll) { try { history.replaceState(null, '', '#phase-' + items[i].n); } catch (e) {} }
+    if (scroll) tabs[i].scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { select(i, false, true); });
+    t.addEventListener('keydown', function (e) {
+      var j = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? i + 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : null;
+      if (j === null) return; e.preventDefault(); select((j + tabs.length) % tabs.length, true, true);
+    });
+  });
+  var start = items.findIndex(function (p) { return '#phase-' + p.n === location.hash; });
+  if (start < 0) start = items.findIndex(function (p) { return p === cur; });
+  select(start < 0 ? 0 : start, false, false);
+})();
+</script>

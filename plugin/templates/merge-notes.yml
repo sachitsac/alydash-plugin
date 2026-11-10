@@ -1,0 +1,56 @@
+# Installed by /alydash:setup. Every pull request says what its owner will
+# notice.
+#
+# The "What you'll notice" section of a pull request's description is what the
+# alydash desk's Timeline shows for the merge. This fails a pull request whose
+# section is missing, has an empty part, has a button that is not a desk page,
+# or names a screenshot that is not a file in the pull request, so the Timeline
+# never gets a gap. The rules are the desk's own, copied into
+# `.github/alydash/`, and they need nothing installed: the job is a checkout
+# and one `node` call.
+#
+# `edited` re-runs it when only the description changes.
+#
+# The description is untrusted: anybody who opens a pull request writes it. It
+# reaches the script only as the value of an `env:` key, and never inside a
+# `run:` script, where it would be pasted into the shell as code. The job
+# holds no secret.
+#
+# To make it stop a merge, add the check named "merge notes" to the required
+# checks of main's branch rule.
+
+name: merge-notes
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    name: merge notes
+    timeout-minutes: 5
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      # The pull request's head, so a screenshot path is looked up in the
+      # commit the description describes.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          # The check needs only node. A repository whose package.json names
+          # pnpm or yarn would otherwise have setup-node try to cache that
+          # package manager, which is not installed in this job, and fail.
+          package-manager-cache: false
+
+      - name: Check the "What you'll notice" section
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node .github/alydash/merge-notes-check.mjs

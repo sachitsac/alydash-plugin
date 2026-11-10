@@ -1,0 +1,6 @@
+{
+  "name": "alydash",
+  "version": "0.10.0",
+  "description": "Connects Claude Code to your alydash desk: /alydash:connect links this laptop to it, and on a desk with runs each session shows on Now with its branch, the first line of its last prompt, its tool's name and its token count. /alydash:setup adds the pull request template, merge notes check and sync workflow a repository needs for its merges and deploys to reach the desk. /alydash:status says what a repository still lacks. /alydash:runner lets this laptop take the agent work you start on items on the desk.",
+  "author": { "name": "Sachit Malhotra" }
+}

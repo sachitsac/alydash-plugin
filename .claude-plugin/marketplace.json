@@ -1,0 +1,14 @@
+{
+  "name": "alydash",
+  "owner": {
+    "name": "Sachit Malhotra"
+  },
+  "description": "The alydash plugin for Claude Code, from the alydash repository.",
+  "plugins": [
+    {
+      "name": "alydash",
+      "source": "./plugin",
+      "description": "Connects Claude Code to your alydash desk: /alydash:connect links this laptop to it, and on a desk with runs its sessions show on Now. /alydash:setup makes a repository's merges and deploys reach the Timeline."
+    }
+  ]
+}
