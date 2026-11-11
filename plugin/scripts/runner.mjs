@@ -29,13 +29,26 @@
 // is what the worker began, by start id, with the session and the process of
 // each: the dedupe, and what lets a worker started later still stop a session
 // whose run has ended. Each session's output is in `runner/logs/<start>.log`.
+//
+// ALYDAS-523 (design D3). A session the worker began whose `claude` process
+// exited with no SessionEnd (killed, crashed) never sent its ended beat, so
+// its run would only go Gone on the desk and no landing Ask would come. When
+// the worker sees the process gone and the run waits on no hold, and the
+// session's state file (`sessions/<session>.json`, the hook's) is still there
+// with no SessionEnd recorded in it and no ended beat waiting to go
+// (`<session>.end.json`), it sends that ended beat itself (lib/session.mjs
+// diedBeat): the session's last beat, ended, with no reply, and the git facts
+// of its worktree read as the hook reads them, once the laptop has been told
+// of them (told.json). Then it removes the state file, so a SessionEnd that
+// comes late finds nothing to end. Only the sessions this worker began pass
+// this way; a session a person started by hand is never its to end.
 
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendFileSync, closeSync, existsSync, openSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CREDENTIALS_FILE, ensurePrivateDir, isLive, pickCredential, pluginDataDir, writePrivateJson } from './lib/credentials.mjs';
+import { CREDENTIALS_FILE, ensurePrivateDir, isLive, pickCredential, pluginDataDir, sendsHeartbeat, writePrivateJson } from './lib/credentials.mjs';
 import { deskUrl, postJson } from './lib/desk.mjs';
 import { repoOf } from './lib/repo.mjs';
 import {
@@ -69,9 +82,14 @@ import {
   worktreePath,
 } from './lib/runner.mjs';
 import { isAlive, startedOf } from './lib/watch.mjs';
+import { gitFacts } from './lib/outcome.mjs';
+import { SENDS_VERSION, diedBeat } from './lib/session.mjs';
 
 const CLAIM_PATH = '/api/runner/laptop/claim';
 const CLAIMED_PATH = '/api/runner/laptop/claimed';
+const HEARTBEAT_PATH = '/api/sessions/heartbeat';
+// hook.mjs's SESSION_ID: a session id names a file in sessions/.
+const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -409,6 +427,7 @@ async function work(jobFile, nonce) {
     } catch {}
     const held = typeof began.worktree === 'string' && typeof began.session === 'string' ? heldPhase(ledgersIn(began.worktree)) : null;
     if (held === null) {
+      await endDiedSession(id, began);
       file(id, { ...began, done: true });
       logLine(files, `the session for ${id} ended`);
       return;
@@ -452,6 +471,40 @@ async function work(jobFile, nonce) {
     child.unref();
     file(id, { ...began, pid: child.pid, started: await startedOf(child.pid), carried: heldKey(held) });
     logLine(files, `waiting at the hold on phase ${held.n} for ${id}, to resume session ${began.session}`);
+  }
+
+  // ALYDAS-523 (design D3). The ended beat a session that exited with no
+  // SessionEnd never sent. Each step in its own try: whatever fails, the
+  // start is still done.
+  async function endDiedSession(id, began) {
+    if (typeof began.session !== 'string' || !SESSION_ID.test(began.session)) return;
+    const sessions = join(job.dataDir, 'sessions');
+    const stateFile = join(sessions, `${began.session}.json`);
+    try {
+      if (existsSync(join(sessions, `${began.session}.end.json`))) return;
+      const state = readJson(stateFile);
+      if (state === null || state.sessionId !== began.session) return;
+      const told = Number(readJson(join(job.dataDir, 'told.json'))?.sends) >= SENDS_VERSION;
+      const facts =
+        told && typeof began.worktree === 'string'
+          ? await gitFacts(began.worktree, (dir, args) => git(dir, args, 3_000).then((said) => (said.ok ? said.out : null)), {
+              startHead: typeof state.startHead === 'string' ? state.startHead : null,
+              // Gate 8 (G8W2): as the hook reads it.
+              startOrigin: typeof state.startOrigin === 'string' ? state.startOrigin : null,
+              since: Number.isFinite(state.startedAt) ? state.startedAt : null,
+            })
+          : null;
+      const body = diedBeat(state, facts, id);
+      if (body === null) return;
+      const entry = pickCredential(job.dataDir, job.repo, { desk: job.desk });
+      if (!isLive(entry) || !sendsHeartbeat(entry)) return;
+      const reply = await postJson(`${entry.desk}${HEARTBEAT_PATH}`, body, { token: entry.token }).catch(() => null);
+      logLine(files, `the session for ${id} exited with no SessionEnd, so the runner sent its ended beat (${reply === null ? 'it did not reach the desk' : reply.status})`);
+      rmSync(stateFile, { force: true });
+      rmSync(join(sessions, `${began.session}.watch.json`), { force: true });
+    } catch (error) {
+      logLine(files, `could not end the session for ${id} on the desk: ${errorText(error)}`);
+    }
   }
 
   while (!leaving && ours()) {

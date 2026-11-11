@@ -1,5 +1,5 @@
 {
-  "description": "alydash: on a desk with runs, puts this session on the desk's Now strip with the first line of its last prompt, its tool's name and its token count, obeys the desk's stop, budget and messages, and brings back the answers to what it asked.",
+  "description": "alydash: on a desk with runs, puts this session on the desk's Now strip with the first line of its last prompt, the opening of its last reply, its last commit, its tool's name and its token count, obeys the desk's stop, budget and messages, and brings back the answers to what it asked.",
   "hooks": {
     "SessionStart": [
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/hook.mjs\"", "timeout": 10 }] }

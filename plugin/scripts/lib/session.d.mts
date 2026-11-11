@@ -1,5 +1,6 @@
 // Types for session.mjs, so the TypeScript suites in tests/plugin can import it.
 
+import type { GitFacts } from './outcome.mjs';
 import type { Usage } from './usage.mjs';
 
 export type HookEvent = 'SessionStart' | 'UserPromptSubmit' | 'PostToolUse' | 'Stop' | 'SessionEnd';
@@ -24,6 +25,19 @@ export type HookInput = {
   // ALYDAS-451, F11. Added by hook.mjs: false for an entry whose desk has no
   // Work, which names no work item.
   work?: boolean;
+  // ALYDAS-515, S1. Added by hook.mjs on Stop and SessionEnd: the text of the
+  // last reply (only where it may be sent; cut by `replyLine`), and the git
+  // facts.
+  lastReply?: string | null;
+  git?: GitFacts | null;
+  // ALYDAS-524. Added by hook.mjs on SessionStart: `git rev-parse HEAD`.
+  head?: string | null;
+  // Gate 8 (G8W2). Added on SessionStart: origin's default tip as the laptop
+  // knows it (`git rev-parse refs/remotes/origin/HEAD`).
+  originHead?: string | null;
+  // Gate 8 (code F3). Added by hook.mjs: the desk and repository it beats to.
+  desk?: string;
+  repo?: string;
 };
 
 export type HeartbeatBody = {
@@ -48,6 +62,13 @@ export type HeartbeatBody = {
   costExact?: false;
   // ALYDAS-127, S5. The desk's start, from ALYDASH_RUN_START.
   start?: string;
+  // ALYDAS-515, S1. On the Stop and the ended beat only.
+  reply?: string;
+  commit?: string;
+  ahead?: number | null;
+  pushed?: boolean | null;
+  // ALYDAS-524. On the Stop and the ended beat only, with the git facts.
+  onDefault?: boolean | null;
 };
 
 export type SessionState = {
@@ -79,16 +100,33 @@ export type SessionState = {
   // ALYDAS-342. The desk said the 401 was the switch, and the session was
   // told so.
   switchedOffSaid?: boolean;
-  // ALYDAS-265. The prompt line as it will be sent (null: none may be), the
+  // ALYDAS-265. The prompt line as it will be sent (null: none yet, or the
+  // laptop not told; ALYDAS-526 c3: blank with prompts off), the
   // last tool's name, the session's count, and whether the desk's last answer
   // was the budget stop. Absent in a state file written before.
   prompt?: string | null;
   tool?: string;
   usage?: Usage | null;
   held?: boolean;
+  // ALYDAS-515, S1. The opening of the last reply as it will be sent (null:
+  // none, or none may be), and what the last Stop said the session came to.
+  reply?: string | null;
+  outcomeSent?: string;
   // ALYDAS-449. The desk last refused a beat because runs is switched off
   // for the app, and the session was told so.
   runsOff?: boolean;
+  // ALYDAS-524. The commit HEAD was at when the run's session started, or
+  // null when it was not read. Absent in a state file written before.
+  startHead?: string | null;
+  // Gate 8 (G8W2). Origin's default tip as the laptop knew it then, or null.
+  // Absent in a state file written before.
+  startOrigin?: string | null;
+  // Gate 8 (code F3). The desk and repository the hook beats this run to,
+  // recorded at SessionStart. Absent in a state file written before.
+  desk?: string;
+  repo?: string;
+  // ALYDAS-523. Whether the SessionEnd hook ran. Absent before.
+  ended?: boolean;
 };
 
 // The desk's answer as desk.mjs reads it. `droppedItem` is set by hook.mjs on
@@ -129,6 +167,7 @@ export const BRANCH_KEYS_MAX: number;
 export const UNLINKED_NOTICE: string;
 export const PROMPT_LINE_MAX: number;
 export const TOOL_MAX: number;
+export const REPLY_LINE_MAX: number;
 export const WHAT_IS_SENT: string;
 export const SENDS_NOTICE: string;
 export const SENDS_VERSION: number;
@@ -138,6 +177,7 @@ export function cleanMessage(text: string): string | null;
 export function switchedOffSentence(reply: Reply | null | undefined): string | null;
 export function sendsPrompt(env: Readonly<Record<string, string | undefined>> | undefined): boolean;
 export function promptLine(prompt: unknown): string;
+export function replyLine(text: unknown): string | null;
 export function toolName(input: { tool_name?: unknown } | null | undefined): string | null;
 export function budgetStopReason(directive: unknown): string;
 export function heardAsk(input: HookInput): string | null;
@@ -155,6 +195,7 @@ export function decide(
   env?: Readonly<Record<string, string | undefined>>,
 ): { beat: HeartbeatBody | null; state: SessionState | null };
 export function endedBeat(state: SessionState): HeartbeatBody;
+export function diedBeat(state: SessionState | null | undefined, git: GitFacts | null, start?: string | null): HeartbeatBody | null;
 export function itemRetry(beat: HeartbeatBody | null, reply: Reply | null): HeartbeatBody | null;
 export function isRunCapRefusal(reply: Reply | null): boolean;
 export function applyReply(

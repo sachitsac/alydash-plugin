@@ -62,6 +62,25 @@
 // (lib/usage.mjs). A budget stop (`reason: 'budget'`) stops the turn as a
 // desk Stop does and ends nothing: the run waits, over its budget, for a
 // person to extend it on the desk, and every hook asks again until they do.
+//
+// ALYDAS-515, S1. The Stop and the ended beat also say what the session came
+// to: the opening of its last reply (`replyLine`, under the prompt line's
+// consent, cleared by the next prompt) and the commit, how far its branch is
+// ahead of origin's default branch, and whether origin has the commit
+// (lib/outcome.mjs). No other beat carries them, and none of them goes before
+// the laptop is told of SENDS_VERSION 2 (Gate 8, W6).
+//
+// ALYDAS-524 (design D4). With them, `onDefault`: whether the session
+// committed straight onto origin's default branch, against the HEAD the
+// SessionStart recorded in the state (`startHead`), told-gated as the other
+// git facts are.
+//
+// ALYDAS-523 (design D3). `diedBeat` is the ended beat the laptop runner
+// sends for a session it started whose process exited with no SessionEnd.
+//
+// ALYDAS-526 c3 (design D6). With ALYDASH_SEND_PROMPT off, every beat but the
+// ended one sends a blank prompt, and the Stop and the ended beat a blank
+// reply, so a run resumed with prompts off clears what the desk showed.
 
 import { restartUsage, usageFigures } from './usage.mjs';
 
@@ -79,6 +98,9 @@ export const BRANCH_MAX = 200;
 // ALYDAS-265. HEARTBEAT_BOUNDS' `prompt` and `tool`, pinned as the two above.
 export const PROMPT_LINE_MAX = 120;
 export const TOOL_MAX = 100;
+// ALYDAS-515, S1 (design D1). The opening of the last reply, as long as the
+// desk keeps it (HEARTBEAT_BOUNDS' `reply`, slice S2).
+export const REPLY_LINE_MAX = 280;
 // A tool's name as Claude Code and MCP servers spell one. Anything else is
 // not a name, and is not sent.
 const TOOL_NAME = /^[A-Za-z0-9_.:-]+$/;
@@ -89,14 +111,15 @@ const OFF = new Set(['0', 'false', 'off', 'no']);
 // apps/desk/app/device/device-form.tsx; tests/plugin/connect.test.ts pins the
 // two together).
 export const WHAT_IS_SENT =
-  `A connected session sends the desk its branch, the first line of each prompt you type (up to ${PROMPT_LINE_MAX} characters), the name of the tool it last used, and its token count and estimated cost. Nothing else you type, and nothing a tool reads or writes, is sent. Set ALYDASH_SEND_PROMPT=0 to send no prompt text.`;
+  `A connected session sends the desk its branch, the first line of each prompt you type (up to ${PROMPT_LINE_MAX} characters), the opening of its last reply (up to ${REPLY_LINE_MAX} characters), the name of the tool it last used, its last commit, how many commits its branch has that the default branch on origin does not, and whether origin has that commit, and its token count and estimated cost. Nothing else you type, and nothing a tool reads or writes, is sent. Set ALYDASH_SEND_PROMPT=0 to send no prompt or reply text.`;
 // Said once on a laptop, by the first hook that can show a person a line,
 // since a laptop connected before this version never saw the connect step
 // say it. Until it has been said, no prompt line is sent.
 export const SENDS_NOTICE = `alydash now shows more of a session on its run page. ${WHAT_IS_SENT}`;
 // The version of what is sent that a laptop has been told of
-// (`told.json` in the plugin's data folder). Raised when a beat sends more.
-export const SENDS_VERSION = 1;
+// (`told.json` in the plugin's data folder). Raised when a beat sends more:
+// 2 for ALYDAS-515's reply opening and git facts.
+export const SENDS_VERSION = 2;
 
 export const STOP_REASON = 'Stopped from the desk.';
 export const CAP_NOTICE =
@@ -192,8 +215,27 @@ export function sendsPrompt(env) {
 // never read in its place.
 export function promptLine(prompt) {
   if (typeof prompt !== 'string') return '';
-  const first = prompt.replaceAll('\t', ' ').split(/[\p{Cc}\u2028\u2029]/u)[0];
-  return cut(first.replace(INVISIBLE, '').trim(), PROMPT_LINE_MAX).trim();
+  return firstLine(prompt, PROMPT_LINE_MAX);
+}
+
+// What promptLine keeps of a text: everything before the first control
+// character or line or paragraph separator, tabs as spaces, invisible
+// characters removed, trimmed, cut to `max` code points.
+function firstLine(text, max) {
+  const first = text.replaceAll('\t', ' ').split(/[\p{Cc}\u2028\u2029]/u)[0];
+  return cut(first.replace(INVISIBLE, '').trim(), max).trim();
+}
+
+// ALYDAS-515, S1 (design D1). The opening of a reply, as a beat carries it:
+// its first paragraph (the text before the first blank line), its line breaks
+// folded to spaces, then cut as promptLine cuts, so any other control
+// character ends it, at REPLY_LINE_MAX code points. Null when nothing
+// printable is left, or it is not text.
+export function replyLine(text) {
+  if (typeof text !== 'string') return null;
+  const paragraph = text.replace(/^\s+/u, '').split(/\r?\n[ \t]*\r?\n/u)[0];
+  const line = firstLine(paragraph.replace(/[ \t]*\r?\n[ \t]*/gu, ' '), REPLY_LINE_MAX);
+  return line === '' ? null : line;
 }
 
 // The name of the tool a PostToolUse reports, or null when it names none.
@@ -318,9 +360,17 @@ function freshState(sessionId, now) {
     heard: [],
     last: null,
     prompt: null,
+    reply: null,
     tool: '',
     usage: null,
     held: false,
+    // ALYDAS-524. The commit HEAD was at when the run's session started.
+    startHead: null,
+    // Gate 8 (G8W2). Origin's default tip as the laptop knew it then.
+    startOrigin: null,
+    // ALYDAS-523. Whether the SessionEnd hook ran, so the runner sends no
+    // ended beat of its own.
+    ended: false,
   };
 }
 
@@ -341,15 +391,42 @@ function linkOf(env, state, branch, work) {
   return { by: 'branch', key: open[0] ?? null, spare: open.length > 1 };
 }
 
-function bodyOf(state, branch, idle, link, ended) {
-  return withDoing(bodyBefore(state, branch, idle, link, ended), state, ended);
+function bodyOf(state, branch, idle, link, ended, outcome) {
+  return withOutcome(withDoing(bodyBefore(state, branch, idle, link, ended), state, ended), outcome);
 }
+
+// ALYDAS-515, S1 (design D1, D2). What a session that stopped came to, on
+// the Stop and the ended beat only (`outcome` is null on every other): the
+// opening of its last reply, when it may be sent (`state.reply`, null
+// otherwise), and the three git facts. A commit that is not one is left out,
+// as the desk keeps the run's when a beat names none; `ahead` and `pushed`
+// go as null when they are not known.
+const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
+function withOutcome(body, outcome) {
+  if (outcome === null) return body;
+  if (typeof outcome.reply === 'string') body.reply = outcome.reply;
+  const git = outcome.git;
+  if (git !== null && typeof git === 'object') {
+    if (typeof git.commit === 'string' && COMMIT.test(git.commit)) body.commit = git.commit;
+    body.ahead = Number.isInteger(git.ahead) && git.ahead >= 0 ? git.ahead : null;
+    body.pushed = typeof git.pushed === 'boolean' ? git.pushed : null;
+    // ALYDAS-524. Null when it is not known.
+    body.onDefault = typeof git.onDefault === 'boolean' ? git.onDefault : null;
+  }
+  return body;
+}
+
+// What a Stop last told the desk it came to, so a Stop with something new
+// beats whatever the throttle.
+const outcomeKey = (outcome) =>
+  JSON.stringify([outcome.reply ?? null, outcome.git?.commit ?? null, outcome.git?.pushed ?? null, outcome.git?.onDefault ?? null]);
 
 // ALYDAS-265. The beat with what the session is doing and what it has spent.
 // The numbers ride the ended beat too, since the desk takes a beat's token
 // count as the run's. The prompt line is `state.prompt`, which is only ever
-// what `promptLine` cut: null (never sent: sending is off, or no prompt yet)
-// leaves the desk's alone, and blank clears it.
+// what `promptLine` cut: null (never sent: the laptop not told, or no prompt
+// yet) leaves the desk's alone, and blank clears it, as sending switched off
+// sends (ALYDAS-526 c3).
 function withDoing(body, state, ended) {
   if (!ended) {
     if (typeof state.prompt === 'string') body.prompt = state.prompt;
@@ -429,6 +506,20 @@ export function decide(event, input, state, now, env = {}) {
     const again = next !== null && !keep;
     next = keep ? next : freshState(sessionId, now);
     next.usage = again && usage !== null ? restartUsage(usage) : usage;
+    // ALYDAS-524. HEAD as the run starts, which hook.mjs read (`head`). A
+    // resumed run keeps the one its first start recorded, so a commit made
+    // before the resume still counts as the session's.
+    // Gate 8 (G8W2). And origin's default tip as the laptop knew it then
+    // (hook.mjs `originHead`), recorded with it and kept by the same rule.
+    if (typeof next.startHead !== 'string') {
+      next.startHead = typeof input?.head === 'string' && COMMIT.test(input.head) ? input.head : null;
+      next.startOrigin = typeof input?.originHead === 'string' && COMMIT.test(input.originHead) ? input.originHead : null;
+    }
+    // Gate 8 (code F3). The desk and repository this run beats to, as the
+    // hook picked them for the session's directory, so stage.mjs beats the
+    // run with that credential and no other. Each start says them again.
+    if (typeof input?.desk === 'string' && input.desk !== '') next.desk = input.desk;
+    if (typeof input?.repo === 'string' && input.repo !== '') next.repo = input.repo;
   } else if (next === null) {
     // No session file: the session began before this repository was
     // connected (or the file was lost). A run starts now, except at the end,
@@ -445,13 +536,33 @@ export function decide(event, input, state, now, env = {}) {
   // and the last tool's name, which a new prompt and the end of a turn clear.
   if (event === 'UserPromptSubmit') {
     next.prompt = sendsPrompt(env) && input?.told === true ? promptLine(input?.prompt) : null;
+    // ALYDAS-515. A new turn's reply is not written yet.
+    next.reply = null;
     next.tool = '';
   } else if (event === 'PostToolUse') {
     next.tool = toolName(input) ?? next.tool ?? '';
   } else if (event === 'Stop' || event === 'SessionStart') {
     next.tool = '';
   }
-  if (!sendsPrompt(env)) next.prompt = null;
+  // ALYDAS-515, S1. The opening of the last reply, read by hook.mjs on Stop
+  // and SessionEnd (`lastReply`), kept as it will be sent and only where the
+  // prompt line may be.
+  const outcomeEvent = event === 'Stop' || event === 'SessionEnd';
+  if (outcomeEvent) next.reply = sendsPrompt(env) && input?.told === true ? replyLine(input?.lastReply) : null;
+  // ALYDAS-526 c3. Prompts off: blank, which the desk clears what it shows
+  // on, and never the text.
+  if (!sendsPrompt(env)) {
+    next.prompt = '';
+    next.reply = outcomeEvent ? '' : null;
+  }
+  // Gate 8 (W6). The git facts are part of what SENDS_VERSION 2 tells a
+  // laptop, so they wait for the notice as the reply does; the prompt switch
+  // holds back text only, as the notice says.
+  const outcome = outcomeEvent ? { reply: next.reply ?? null, git: input?.told === true ? (input?.git ?? null) : null } : null;
+
+  // ALYDAS-523. The SessionEnd hook ran, whatever it sends: the runner, which
+  // reads this state when the session's process is gone, sends nothing more.
+  next.ended = event === 'SessionEnd';
 
   // Idle once a turn is over, and at the start, before the first prompt.
   if (event === 'Stop' || event === 'SessionStart') next.idle = true;
@@ -469,9 +580,17 @@ export function decide(event, input, state, now, env = {}) {
   // A Stop whose last beat did not already say idle beats whatever the
   // throttle, so the card never says working while the session waits.
   const turningIdle = event === 'Stop' && !String(next.last?.statusLine ?? '').endsWith(' · idle');
+  // ALYDAS-515. A Stop whose reply or commit is not what the last Stop sent
+  // beats too, so the page has the turn's last reply.
+  // A Stop that knows neither is no reason to beat.
+  const newOutcome =
+    event === 'Stop' &&
+    ((typeof outcome.reply === 'string' && outcome.reply !== '') || typeof outcome.git?.commit === 'string') &&
+    outcomeKey(outcome) !== next.outcomeSent;
   const due =
     ALWAYS_BEATS.has(event) ||
     turningIdle ||
+    newOutcome ||
     raised !== null ||
     // ALYDAS-265. Over its budget, so every hook asks whether it was extended.
     next.held === true ||
@@ -488,7 +607,8 @@ export function decide(event, input, state, now, env = {}) {
   // ALYDAS-266. Kept beside the beat, so applyReply knows whose word a
   // refused item was.
   next.link = linkOf(env, next, input?.branch ?? null, input?.work);
-  const beat = bodyOf(next, input?.branch ?? null, next.idle, next.link, ended);
+  const beat = bodyOf(next, input?.branch ?? null, next.idle, next.link, ended, outcome);
+  if (outcome !== null) next.outcomeSent = outcomeKey(outcome);
   const start = runStartOf(env);
   if (start !== null) beat.start = start;
   next.lastBeatAt = now;
@@ -500,6 +620,12 @@ export function decide(event, input, state, now, env = {}) {
   delete next.last.idle;
   delete next.last.prompt;
   delete next.last.tool;
+  // ALYDAS-515. Said on the beat that read them, and on no other.
+  delete next.last.reply;
+  delete next.last.commit;
+  delete next.last.ahead;
+  delete next.last.pushed;
+  delete next.last.onDefault;
   return { beat, state: next };
 }
 
@@ -507,6 +633,25 @@ export function decide(event, input, state, now, env = {}) {
 export function endedBeat(state) {
   const last = state?.last ?? { run: state.run, agent: AGENT, statusLine: statusLine(null, false), branch: null };
   return { ...last, ended: true };
+}
+
+// ALYDAS-523 (design D3). The ended beat the laptop runner sends for a
+// session it started whose `claude` process exited with no SessionEnd: the
+// hook's ended beat (`endedBeat`, the last beat, ended), with no reply and the
+// git facts the runner read of the session's worktree, or null for none (not
+// told, as the hook holds them back). `start` is the desk's start the runner
+// began the session for, named when the last beat did not.
+//
+// Null when there is nothing to end: no state, the SessionEnd hook already
+// ran (`ended`), or the run was stopped from the desk (whose ended beat went
+// then) or never shown (the run cap).
+export function diedBeat(state, git, start = null) {
+  if (state === null || typeof state !== 'object' || Array.isArray(state)) return null;
+  if (state.ended === true || state.stopped === true || state.capped === true) return null;
+  if (typeof state.run !== 'string' || state.run === '') return null;
+  const body = withOutcome(endedBeat(state), { reply: null, git: git ?? null });
+  if (body.start === undefined && typeof start === 'string' && START_ID.test(start)) body.start = start;
+  return body;
 }
 
 // The retry a beat that named a work item gets when the desk refused it with

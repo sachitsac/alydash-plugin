@@ -13,15 +13,19 @@
 // items never move to shipped, because nothing tells the desk to read it and
 // its pull requests carry nothing for the desk to publish.
 //
-// It writes files and stops: nothing is committed, pushed or sent anywhere.
-// A file that is already there and is not one this command wrote is kept as it
-// is and named, so a repository's own template or workflow is never replaced.
+// It writes files and commits nothing, pushes nothing and sends the desk
+// nothing. A file that is already there and is not one this command wrote is
+// kept as it is and named, so a repository's own template or workflow is never
+// replaced.
 //
-// The desk's address is written into sync.yml, read from the credential
-// `/alydash:connect` stored for this repository. It is no secret: the job
-// proves who it is with a token GitHub signs for that run, and the desk
-// accepts it only from a workflow file named sync.yml on main, in a
-// repository one of its apps names.
+// ALYDAS-518. The desk's address is in no file this writes: sync.yml and
+// run.yml read it from the repository variable DESK_URL, so a committed
+// workflow names no one desk and a copy of the repository reports to its own.
+// Setup sets that variable to the desk of the credential `/alydash:connect`
+// stored for this repository, through the GitHub CLI, or says the gh line to
+// run when it cannot. It is no secret: the job proves who it is with a token
+// GitHub signs for that run, and the desk accepts it only from a workflow file
+// of the right name on main, in a repository one of its apps names.
 
 import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -75,11 +79,24 @@ export function workflowName(text) {
   return name === '' ? null : name;
 }
 
+// ALYDAS-518. The repository variable both workflows read the desk's address
+// from, and the first lines of each step that asks the desk: a job with no
+// variable set is a red run that says what to set, never one that asks
+// GitHub for a token with no audience or calls a desk at no address.
+export const DESK_VARIABLE = 'DESK_URL';
+const deskGuard = (notDone) => [
+  '          if [ -z "$DESK_URL" ]; then',
+  `            echo "::error::This repository has no DESK_URL variable, so ${notDone}. Set it to the desk's address: gh variable set DESK_URL --body https://your-desk.example"`,
+  '            exit 1',
+  '          fi',
+  '',
+];
+
 // sync.yml for a repository. With `deployName`, it runs after each successful
 // run of that workflow on main, which is a deploy; with null, on each push to
-// main. Both values are written as JSON strings, which YAML reads as they are,
-// so neither can end its own line and start another key.
-export function syncWorkflow({ desk, deployName }) {
+// main. The name is written as a JSON string, which YAML reads as it is, so it
+// cannot end its own line and start another key.
+export function syncWorkflow({ deployName }) {
   const afterDeploy = deployName !== null;
   const on = afterDeploy
     ? [
@@ -147,9 +164,12 @@ export function syncWorkflow({ desk, deployName }) {
     '    steps:',
     '      - name: Sync the board from the repository',
     '        env:',
-    `          DESK_URL: ${JSON.stringify(desk)}`,
+    '          # The desk this repository reports to, from the repository variable',
+    '          # DESK_URL, so no file here names one desk.',
+    '          DESK_URL: ${{ vars.DESK_URL }}',
     '          REPOSITORY: https://github.com/${{ github.repository }}',
     '        run: |',
+    ...deskGuard('the board was not synced'),
     '          ID_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$DESK_URL" | jq -r \'.value // empty\') || true',
     '',
     '          if [ -z "$ID_TOKEN" ]; then',
@@ -191,7 +211,8 @@ export function syncWorkflow({ desk, deployName }) {
 // own subscription (the CLAUDE_CODE_OAUTH_TOKEN secret, which
 // `claude setup-token` prints). No desk secret is in it. The inputs reach the
 // scripts only through `env`, never written into a script, so neither can end
-// a line of shell. The desk URL is a JSON string, as in sync.yml.
+// a line of shell. The desk's address is the repository variable DESK_URL, as
+// in sync.yml (ALYDAS-518).
 //
 // claude-code-action's inputs are its v1.0.270 action.yml's: `prompt`,
 // `claude_code_oauth_token`, `plugin_marketplaces` (git URLs, one a line),
@@ -232,7 +253,7 @@ const CLAUDE_CODE_ACTION = 'anthropics/claude-code-action@9eb012b6d0900c2b9eede6
 const CLAUDE_CODE_VERSION = '2.1.321';
 const PLUGIN_VERSION = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '.claude-plugin', 'plugin.json'), 'utf8')).version;
 
-export function runWorkflow({ desk }) {
+export function runWorkflow() {
   return [
     `${OURS} The desk starts agent work on an item here, on your`,
     '# Claude subscription, when you press Start with agent and pick GitHub Actions.',
@@ -289,10 +310,13 @@ export function runWorkflow({ desk }) {
     '      - name: Trade the run token at the desk',
     '        id: desk',
     '        env:',
-    `          DESK_URL: ${JSON.stringify(desk)}`,
+    '          # The desk this repository reports to, from the repository variable',
+    '          # DESK_URL as sync.yml reads it, so no file here names one desk.',
+    '          DESK_URL: ${{ vars.DESK_URL }}',
     '          START: ${{ inputs.start }}',
     '          REPOSITORY: ${{ github.repository }}',
     '        run: |',
+    ...deskGuard('the desk was not asked'),
     '          ID_TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$DESK_URL" | jq -r \'.value // empty\') || true',
     '',
     '          if [ -z "$ID_TOKEN" ]; then',
@@ -351,7 +375,7 @@ export function runWorkflow({ desk }) {
     '      - name: Run the start in Claude Code',
     `        uses: ${CLAUDE_CODE_ACTION}`,
     '        env:',
-    `          ALYDASH_URL: ${JSON.stringify(desk)}`,
+    '          ALYDASH_URL: ${{ vars.DESK_URL }}',
     '          ALYDASH_RUN_START: ${{ inputs.start }}',
     '          ALYDASH_WORK_ITEM: ${{ inputs.item }}',
     '          ALYDASH_RUN_BUDGET: ${{ steps.desk.outputs.budget }}',
@@ -366,7 +390,7 @@ export function runWorkflow({ desk }) {
     '',
     '      - name: Wait at a hold on the desk, then carry on',
     '        env:',
-    `          ALYDASH_URL: ${JSON.stringify(desk)}`,
+    '          ALYDASH_URL: ${{ vars.DESK_URL }}',
     '          ALYDASH_RUN_START: ${{ inputs.start }}',
     '          ALYDASH_WORK_ITEM: ${{ inputs.item }}',
     '          ALYDASH_RUN_BUDGET: ${{ steps.desk.outputs.budget }}',
@@ -498,7 +522,7 @@ function planFor(root, desk, entry) {
     },
     {
       path: SYNC_FILE,
-      text: syncWorkflow({ desk, deployName }),
+      text: syncWorkflow({ deployName }),
       replace: startsOurs,
       keptBecause: 'this repository has its own workflow of that name. The desk takes a sync only from a file named sync.yml.',
     },
@@ -506,7 +530,7 @@ function planFor(root, desk, entry) {
     // which GitHub's runners can reach.
     {
       path: RUN_FILE,
-      text: runWorkflow({ desk }),
+      text: runWorkflow(),
       replace: startsOurs,
       keptBecause:
         'this repository has its own workflow of that name. The desk starts agent work on GitHub Actions only through a file named run.yml.',
@@ -541,6 +565,20 @@ function newestMergedWithGh(root) {
 }
 
 const day = (iso) => new Date(iso).toISOString().slice(0, 10);
+
+// ALYDAS-518. Sets a repository variable through the GitHub CLI: true when gh
+// set it, false when it could not (not installed, not signed in, or no right
+// to the repository). `env` is the one setup was handed.
+function setVariableWithGh(root, repo, name, value, env = process.env) {
+  return new Promise((resolve) => {
+    execFile(
+      'gh',
+      ['variable', 'set', name, '--repo', repo, '--body', value],
+      { cwd: root, timeout: 15000, env: { ...env, GH_PROMPT_DISABLED: '1', NO_COLOR: '1' } },
+      (error) => resolve(!error),
+    );
+  });
+}
 
 // `/alydash:status`. What this repository still lacks for the desk to follow
 // it, each line followed by the one thing to do. It writes nothing but what
@@ -659,7 +697,12 @@ export async function status({
   return { code: 0, lines };
 }
 
-export async function setup({ env = process.env, dataArg, cwd = process.cwd() } = {}) {
+export async function setup({
+  env = process.env,
+  dataArg,
+  cwd = process.cwd(),
+  setVariable = (root, repo, name, value) => setVariableWithGh(root, repo, name, value, env),
+} = {}) {
   let dataDir;
   try {
     dataDir = pluginDataDir(env, dataArg);
@@ -683,6 +726,22 @@ export async function setup({ env = process.env, dataArg, cwd = process.cwd() } 
 
   const changed = done.filter((one) => one.state === 'added' || one.state === 'updated');
   const lines = [deskLine(repo, desk, entry), ...done.map((one) => one.line)];
+  // ALYDAS-518. The workflows of ours that are now in the repository read the
+  // desk's address from DESK_URL, so it is set to this desk, or the line to
+  // set it is said. None here (a desk on this laptop, or the repository's own
+  // files kept): nothing reads it, and nothing is set.
+  const reading = done
+    .filter((one) => (one.path === SYNC_FILE || one.path === RUN_FILE) && one.state !== 'kept')
+    .map((one) => one.path.replace('.github/workflows/', ''))
+    .sort();
+  if (reading.length > 0) {
+    const readBy = `which ${reading.join(' and ')} ${reading.length === 1 ? 'reads' : 'read'}`;
+    lines.push(
+      (await setVariable(root, repo, DESK_VARIABLE, desk))
+        ? `Set the repository variable ${DESK_VARIABLE} to ${oneLine(desk)}, ${readBy}.`
+        : `Could not set the repository variable ${DESK_VARIABLE}, ${readBy} (the GitHub CLI, gh, is not installed or not signed in). Set it with: gh variable set ${DESK_VARIABLE} --repo ${repo} --body ${oneLine(desk)}`,
+    );
+  }
   // ALYDAS-391. For a desk on this laptop, the one sentence that says why no
   // sync workflow was written, in place of when the board syncs: it never
   // does from here.

@@ -28,6 +28,18 @@
 // once what a connected session sends (`SENDS_NOTICE`), and no prompt line is
 // sent before it has been.
 //
+// ALYDAS-515, S1. On Stop and SessionEnd it reads the transcript's tail once
+// more, for the last reply's text, of which lib/session.mjs keeps the first
+// paragraph's opening and sends it where a prompt line may go; and three git
+// facts (lib/outcome.mjs), read locally, never fetched.
+//
+// ALYDAS-524 (design D4). SessionStart also reads HEAD, which lib/session.mjs
+// keeps in the state as the run's start (`startHead`), and Stop and SessionEnd
+// read origin's default branch beside the other git facts, so the desk is
+// told when the session committed straight onto it (`onDefault`). Each read
+// is one more git call in the round the hook already makes, inside its ten
+// seconds.
+//
 // ALYDAS-379, S2. A credential for a desk built without runs (its `scopes`
 // lack the heartbeat's, lib/credentials.mjs sendsHeartbeat) gets no beat from
 // any hook, the detached sender or the watcher, and so no refusal line at
@@ -66,8 +78,10 @@ import {
   decide,
   endedBeat,
   itemRetry,
+  sendsPrompt,
   switchedOffSentence,
 } from './lib/session.mjs';
+import { gitFacts, lastReplyText } from './lib/outcome.mjs';
 import { readUsage } from './lib/usage.mjs';
 import {
   WATCH_TICK_MS,
@@ -131,13 +145,41 @@ async function connectionOnDesk(entry, heard) {
   }
 }
 
-function git(cwd, args) {
+// git's trimmed output, or null when it failed or (unless `empty`) printed
+// nothing. ALYDAS-515: `empty` tells a blank answer from a failure.
+function git(cwd, args, { empty = false } = {}) {
   return new Promise((resolve) => {
     execFile('git', ['-C', cwd, ...args], { timeout: 3000 }, (error, stdout) => {
       const text = String(stdout ?? '').trim();
-      resolve(error || text === '' ? null : text);
+      resolve(error || (text === '' && !empty) ? null : text);
     });
   });
+}
+
+// ALYDAS-515, S1 (design D1, D2). What a session that stopped came to, read on
+// Stop and SessionEnd only. The reply's text is read only where it may be sent
+// (ALYDASH_SEND_PROMPT on, and the laptop told what is sent), the git facts
+// only once the laptop is told (the switch holds back text alone), each read in its
+// own try: a transcript that cannot be read costs the reply and nothing else.
+async function outcomeOf(event, input, cwd, env, told, start) {
+  if (event !== 'Stop' && event !== 'SessionEnd') return {};
+  let lastReply = null;
+  if (sendsPrompt(env) && told) {
+    try {
+      lastReply = lastReplyText(input.transcript_path);
+    } catch (error) {
+      say(`could not read the session's last reply: ${error instanceof Error ? error.message : 'unknown error'}`);
+    }
+  }
+  // Gate 8 (W6). Nor are the git facts read before the laptop is told of them.
+  if (!told) return { lastReply, git: null };
+  let facts = null;
+  try {
+    facts = await gitFacts(cwd, (dir, args) => git(dir, args, { empty: true }), start);
+  } catch (error) {
+    say(`could not read the session's commit: ${error instanceof Error ? error.message : 'unknown error'}`);
+  }
+  return { lastReply, git: facts };
 }
 
 // The branch. `symbolic-ref` first, because `rev-parse --abbrev-ref HEAD`
@@ -417,7 +459,22 @@ async function hook(env) {
 
   const now = Date.now();
   // ALYDAS-451, F11: `work`, so a desk without Work is sent no item.
-  const decided = decide(event, { ...input, branch: await branchOf(cwd), usage, told, work: hasWork(entry) }, before, now, {
+  const mine = before?.sessionId === sessionId ? before : null;
+  // ALYDAS-524. The outcome's git facts, the branch and (at SessionStart) the
+  // run's starting HEAD, read at once.
+  // Gate 8 (G8W2): and origin's default tip as the laptop knows it.
+  const start = {
+    startHead: typeof mine?.startHead === 'string' ? mine.startHead : null,
+    startOrigin: typeof mine?.startOrigin === 'string' ? mine.startOrigin : null,
+    since: Number.isFinite(mine?.startedAt) ? mine.startedAt : null,
+  };
+  const [outcome, branch, head, originHead] = await Promise.all([
+    outcomeOf(event, input, cwd, env, told, start),
+    branchOf(cwd),
+    event === 'SessionStart' ? git(cwd, ['rev-parse', 'HEAD']) : Promise.resolve(null),
+    event === 'SessionStart' ? git(cwd, ['rev-parse', '--verify', '-q', 'refs/remotes/origin/HEAD']) : Promise.resolve(null),
+  ]);
+  const decided = decide(event, { ...input, branch, head, originHead, usage, told, work: hasWork(entry), desk: entry.desk, repo, ...outcome }, before, now, {
     ALYDASH_WORK_ITEM: env.ALYDASH_WORK_ITEM,
     ALYDASH_SEND_PROMPT: env.ALYDASH_SEND_PROMPT,
     // ALYDAS-127, S5: the desk's start, which the laptop runner sets.

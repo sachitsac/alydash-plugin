@@ -14,6 +14,25 @@ Each stage has a type:
 
 Run the stages in order, and meet each stage's exit criteria before starting the next: every gate assumes the one before it passed (tests run on lint-clean code, review reads a committed diff).
 
+## Reporting stages to the desk
+
+Each stage tells the alydash desk when it starts and when it ends, so the session's run page shows the seven stages as they happen. It is one command at each boundary, run on the host:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" <n> start                       # as stage n begins
+node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" <n> done                        # once its exit criteria are met
+node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" <n> failed "<why, one line>"    # when it stops without meeting them
+node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" <n> skipped "<why, one line>"   # when it is not run at all
+```
+
+It prints nothing and sends nothing when this session has no desk connection, so run it either way and carry on. If it prints a line from the desk, read it as the person's: a message to follow, or a stop. When a later stage sends you back to an earlier one (Stage 5 back to Stage 3), report the earlier stage's `start` again; the stages after it go back to be done. The lint and test re-runs inside Stage 6 are part of Stage 6 and are not reported on their own.
+
+**A start from the desk** (`ALYDASH_RUN_START` is set): its worktree is already isolated, so skip Stage 0 and run Stages 1 to 6 on the host, where the desk can hear them:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 0 skipped "the desk start's worktree is its sandbox"
+```
+
 ---
 
 ## Stage 0: Sandbox (BOOT)
@@ -22,9 +41,11 @@ Run the stages in order, and meet each stage's exit criteria before starting the
 
 ### Instructions
 
+Unless `ALYDASH_RUN_START` is set (see Reporting stages to the desk), start with `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 0 start`.
+
 **0a. Check if already inside a container:**
 
-If already inside a container, skip Stage 0 entirely and proceed to Stage 1.
+If already inside a container, skip Stage 0 entirely and proceed to Stage 1 (`node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 0 skipped "already inside a container"`).
 
 ```bash
 # Detect container environment
@@ -117,6 +138,8 @@ Clean up container resources:
 
 Container booted and inner pipeline started, OR local fallback activated. If container was used, post-pipeline verification confirms commits landed on host.
 
+Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 0 done`; on a boot that fails, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 0 failed "<why>"`. The inner session in a container has no desk connection, so its Stages 1 to 6 are not reported; with the local fallback, report them as below.
+
 ---
 
 ## Stage 1: Think (LLM — Plan Mode)
@@ -124,6 +147,8 @@ Container booted and inner pipeline started, OR local fallback activated. If con
 **Goal:** Understand the codebase and create an implementation plan before writing any code.
 
 ### Instructions
+
+First, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 1 start`.
 
 1. Call `EnterPlanMode` to activate Claude Code's native planning workflow.
 2. In plan mode, explore the codebase read-only. Hand broad searches that span many files to an Explore subagent.
@@ -138,6 +163,8 @@ Container booted and inner pipeline started, OR local fallback activated. If con
 
 User approves the plan. Do NOT proceed until approval is received.
 
+Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 1 done`. If the person turns the plan down and stops, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 1 failed "<why>"`.
+
 ---
 
 ## Stage 2: Write Code (LLM — Task-driven TDD)
@@ -145,6 +172,8 @@ User approves the plan. Do NOT proceed until approval is received.
 **Goal:** Implement the approved plan using test-driven development, parallelized where possible.
 
 ### Instructions
+
+First, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 2 start`.
 
 **2a. Create tasks** from the approved plan:
 
@@ -174,6 +203,8 @@ User approves the plan. Do NOT proceed until approval is received.
 
 All tasks completed. All per-task tests passing. Integration check green.
 
+Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 2 done`. If you stop with work undone, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 2 failed "<why>"`.
+
 ---
 
 ## Stage 3: Linter (GATE)
@@ -181,6 +212,8 @@ All tasks completed. All per-task tests passing. Integration check green.
 **Goal:** Ensure all code passes linting with zero errors.
 
 ### Instructions
+
+First, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 3 start`.
 
 1. **Find the project's lint command**: its package scripts first, using its package manager, else its configured linter. If the project's CLAUDE.md names a lint or typecheck command, use that one.
 2. **Run the linter** via Bash.
@@ -193,6 +226,8 @@ All tasks completed. All per-task tests passing. Integration check green.
 
 Linter exits with code 0.
 
+Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 3 done`. If you stop to ask the user after three attempts, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 3 failed "<the error>"` first.
+
 ---
 
 ## Stage 4: Git Commit (GATE)
@@ -200,6 +235,8 @@ Linter exits with code 0.
 **Goal:** Create a clean, well-messaged commit of all changes.
 
 ### Instructions
+
+First, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 4 start`.
 
 1. Run `git status` to see all changed/untracked files.
 2. Run `git diff` to review staged and unstaged changes.
@@ -226,6 +263,8 @@ Linter exits with code 0.
 
 Commit succeeds (exit code 0) and `git status` shows a clean working tree for the committed files.
 
+Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 4 done`. If the commit cannot be made, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 4 failed "<why>"`.
+
 ---
 
 ## Stage 5: Tests — Full Regression (GATE)
@@ -233,6 +272,8 @@ Commit succeeds (exit code 0) and `git status` shows a clean working tree for th
 **Goal:** Verify the entire test suite passes, catching integration issues.
 
 ### Instructions
+
+First, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 5 start`.
 
 1. **Find the project's full test command**: its package scripts first, else its configured runner, or what the project's CLAUDE.md names.
 2. **Run the full test suite** via Bash (not just per-task tests from Stage 2).
@@ -247,6 +288,8 @@ Commit succeeds (exit code 0) and `git status` shows a clean working tree for th
 
 Full test suite exits with code 0.
 
+Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 5 done`. If you stop to ask the user after three attempts, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 5 failed "<which tests, and why>"` first.
+
 ---
 
 ## Stage 6: Review (LLM)
@@ -254,6 +297,8 @@ Full test suite exits with code 0.
 **Goal:** Self-review the committed changes for bugs, security issues, and quality.
 
 ### Instructions
+
+First, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 6 start`.
 
 1. Run `git diff HEAD~1` to see the full committed diff.
 2. **Review for:**
@@ -274,6 +319,8 @@ Full test suite exits with code 0.
 ### Exit Criteria
 
 No more issues found, or all issues have been fixed and verified. Review summary presented to the user.
+
+Then `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 6 done`. If you stop with an issue left unfixed, `node "${CLAUDE_PLUGIN_ROOT}/scripts/stage.mjs" 6 failed "<the issue>"`.
 
 ---
 
@@ -297,6 +344,7 @@ No more issues found, or all issues have been fixed and verified. Review summary
 - **GATE stages are autonomous.** Fix and retry until green. Do not ask the user for help unless you are truly stuck after 3+ attempts on the same error.
 - **Stage 1 is the only user-blocking stage** (when running locally). In container mode, Stage 1 self-approves and documents assumptions.
 - **If Stage 5 requires code fixes, re-run Stage 3** (linter) before re-running Stage 5 (tests). Maintain the invariant: lint-clean before testing.
+- **Report each stage to the desk** at its start and its end (Reporting stages to the desk), on the host.
 - **Announce each stage** as you enter it so the user can track progress:
   ```
   ## Stage N: [Name] ([TYPE])

@@ -1,5 +1,5 @@
 ---
-description: Connect this laptop to your alydash desk (on a desk with runs, sessions here then show on Now, each sending its branch, the first line of each prompt, its tool's name and its token count)
+description: Connect this laptop to your alydash desk (on a desk with runs, sessions here then show on Now, each sending its branch and last commit, the first line of each prompt, the opening of its last reply, its tool's name and its token count)
 disable-model-invocation: true
 allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/scripts/connect.mjs" start --data "${CLAUDE_PLUGIN_DATA}")
 ---
