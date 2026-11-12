@@ -218,6 +218,22 @@ export function promptLine(prompt) {
   return firstLine(prompt, PROMPT_LINE_MAX);
 }
 
+// ALYDAS-544. Whether a prompt is a system wake and not something a person
+// typed: trimmed, it opens with `<task-notification>` (a background task
+// finished), or it is only `<system-reminder>` blocks and whitespace. A typed
+// prompt that quotes either tag later in its text is a prompt. The desk has
+// only the first line, so its rule is runs' `isWakeLine` (system-wake.ts);
+// tests/plugin/session.test.ts holds the two to each other.
+const REMINDER_BLOCK = /<system-reminder>[\s\S]*?<\/system-reminder>/g;
+
+export function isSystemWake(prompt) {
+  if (typeof prompt !== 'string') return false;
+  // Invisible characters first, as promptLine strips them (Gate 6).
+  const text = prompt.replace(INVISIBLE, '').trim();
+  if (text.startsWith('<task-notification>')) return true;
+  return text.startsWith('<system-reminder>') && text.replace(REMINDER_BLOCK, '').trim() === '';
+}
+
 // What promptLine keeps of a text: everything before the first control
 // character or line or paragraph separator, tabs as spaces, invisible
 // characters removed, trimmed, cut to `max` code points.
@@ -534,8 +550,11 @@ export function decide(event, input, state, now, env = {}) {
   // ALYDAS-265. What the session is doing, kept in the state as it will be
   // sent and no fuller: a prompt's first line (null when it may not be sent),
   // and the last tool's name, which a new prompt and the end of a turn clear.
+  // ALYDAS-544. A wake leaves the line a person typed as it was, and never
+  // blanks it (a blank clears the desk's); the turn is still a new turn.
+  const wake = event === 'UserPromptSubmit' && isSystemWake(input?.prompt);
   if (event === 'UserPromptSubmit') {
-    next.prompt = sendsPrompt(env) && input?.told === true ? promptLine(input?.prompt) : null;
+    if (!wake) next.prompt = sendsPrompt(env) && input?.told === true ? promptLine(input?.prompt) : null;
     // ALYDAS-515. A new turn's reply is not written yet.
     next.reply = null;
     next.tool = '';
@@ -608,6 +627,10 @@ export function decide(event, input, state, now, env = {}) {
   // refused item was.
   next.link = linkOf(env, next, input?.branch ?? null, input?.work);
   const beat = bodyOf(next, input?.branch ?? null, next.idle, next.link, ended, outcome);
+  // ALYDAS-544. The wake's own beat says nothing of the prompt; the turn's
+  // later beats carry the kept line, as any turn's do. Prompts off still
+  // sends its blank.
+  if (wake && sendsPrompt(env)) delete beat.prompt;
   if (outcome !== null) next.outcomeSent = outcomeKey(outcome);
   const start = runStartOf(env);
   if (start !== null) beat.start = start;

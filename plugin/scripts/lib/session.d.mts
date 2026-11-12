@@ -177,6 +177,7 @@ export function cleanMessage(text: string): string | null;
 export function switchedOffSentence(reply: Reply | null | undefined): string | null;
 export function sendsPrompt(env: Readonly<Record<string, string | undefined>> | undefined): boolean;
 export function promptLine(prompt: unknown): string;
+export function isSystemWake(prompt: unknown): boolean;
 export function replyLine(text: unknown): string | null;
 export function toolName(input: { tool_name?: unknown } | null | undefined): string | null;
 export function budgetStopReason(directive: unknown): string;

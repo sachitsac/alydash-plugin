@@ -48,7 +48,9 @@ const IDS_KEPT = 16;
 export const SUBAGENTS_MAX = 200;
 // TOKENS_MAX in packages/modules/runs/src/heartbeat-body.ts and LEDGER_BOUNDS.costUsd in
 // packages/modules/runs/src/ledger-bounds.ts.
-export const TOKENS_MAX = 2_147_483_647;
+// ALYDAS-543: the largest whole number a JS number holds exactly, as the
+// desk's `bigint` columns allow, so a long session's real total is sent.
+export const TOKENS_MAX = Number.MAX_SAFE_INTEGER;
 export const COST_MAX = 99_999_999;
 
 const count = (value) => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
