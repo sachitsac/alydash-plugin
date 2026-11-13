@@ -160,7 +160,10 @@ surface, read the console, confirm the request and the row. Write
 `measurements/<date>-<slug>-evidence.md` with the images beside it; an item
 that could not be observed is listed as unverified, never omitted. A run that
 changed a rendered surface also measures each screen it touched while the app
-is up, and commits the measurement files (`ui-gate.md` § Measuring). Board
+is up, and commits the measurement files (`ui-gate.md` § Measuring). Run the
+project's browser suite on the final tree and paste its totals under a
+`Browser suite (` line, or write `no browser suite` (`gates.md` §3, Run the
+project's browser suite); `phase 7 done` refuses an evidence doc with neither. Board
 table: `#, Observed, State` with `observed`, `pending`, or `unverified`.
 
 Observe the shipped thing, not a stand-in built for the check: the

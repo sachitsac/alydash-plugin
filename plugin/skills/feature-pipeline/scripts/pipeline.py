@@ -3866,6 +3866,69 @@ def cmd_review(a):
     print(printable(f"review record: {said_it}"))
     over_budget(obey_the_write(path, beat))
 
+# ALYDAS-553. Gate 7's browser suite totals: one line that names the suite,
+# `Browser suite (`, and carries a number before `passed`.
+BROWSER_SUITE_TOTALS = re.compile(r"^[^\n]*\bbrowser suite \([^\n]*?\b\d[\d,]* passed\b", re.I | re.M)
+# Gate 6 (alydas-545). The line names the commit it ran on (a template's
+# `<sha>` does not), more than nought passed, and a failure it carries is
+# listed as unverified; `no browser suite` is the clause's end, not words
+# inside another sentence ("no browser suite failure").
+BROWSER_SUITE_COMMIT = re.compile(r"\b[0-9a-f]{7,40}\b", re.I)
+BROWSER_SUITE_PASSED = re.compile(r"\b(\d[\d,]*) passed\b", re.I)
+BROWSER_SUITE_FAILED = re.compile(r"\b(\d[\d,]*) failed\b", re.I)
+NO_BROWSER_SUITE = re.compile(r"\bno browser suite\b(?=\s*(?:[.;:,)`'\"]|$))", re.I | re.M)
+
+UNVERIFIED_HEADING = re.compile(r"^(#+)[^\n]*\bunverified\b[^\n]*$", re.I | re.M)
+
+def unverified_sections(text):
+    """The text under each heading that says unverified, to the next heading
+    of the same or a higher level."""
+    for heading in UNVERIFIED_HEADING.finditer(text):
+        level = len(heading.group(1))
+        rest = text[heading.end():]
+        stop = re.search(r"^#{1,%d}\s" % level, rest, re.M)
+        yield rest[:stop.start()] if stop else rest
+
+def failures_listed(text, failed):
+    """Gate 8 (alydas-545), W2. A failing totals line is excused only where
+    its failures are listed as unverified: a line that says unverified and
+    gives their number, or a section under an Unverified heading that names
+    the browser suite or their number. The word anywhere else is not it."""
+    count = re.compile(r"\b%d\b" % failed)
+    if any("unverified" in line.lower() and count.search(line) for line in text.split("\n")):
+        return True
+    return any(re.search(r"\bbrowser suite\b", section, re.I) or count.search(section)
+               for section in unverified_sections(text))
+
+def browser_suite_problem(text):
+    """Gate 7's browser suite check (ALYDAS-553): None when the evidence doc
+    gives good totals, or has no totals line and says there is no browser
+    suite; else what is wrong, in words. A doc with a totals line is judged
+    by it, and `no browser suite` beside a totals line excuses nothing
+    (Gate 8, W1 and W2)."""
+    told = []
+    for line in BROWSER_SUITE_TOTALS.finditer(text):
+        said = line.group(0) + text[line.end():].split("\n", 1)[0]
+        passed = int(BROWSER_SUITE_PASSED.search(said).group(1).replace(",", ""))
+        failed_at = BROWSER_SUITE_FAILED.search(said)
+        failed = int(failed_at.group(1).replace(",", "")) if failed_at else 0
+        if not BROWSER_SUITE_COMMIT.search(said):
+            told.append("names no commit (a template's <sha> is not one): put the commit the suite ran on in it")
+        elif passed == 0:
+            told.append("says 0 passed: run the suite on the final tree and paste what it printed")
+        elif failed > 0 and not failures_listed(text, failed):
+            told.append(f"says {failed} failed and they are not listed as unverified: fix them, or show they fail on "
+                        f"main too and list them under an '## Unverified' heading that names the browser suite")
+        else:
+            return None
+    if told:
+        return "evidence doc's browser suite totals line " + told[0]
+    if NO_BROWSER_SUITE.search(text):
+        return None
+    return ("evidence doc has no browser suite totals: add a line like "
+            "'Browser suite (pnpm e2e, final tree at <sha>): 160 passed, 0 failed', "
+            "or say 'no browser suite'")
+
 def run_checks(run, n):
     root, slug = run["root"], run["slug"]
     p = phase_of(run, n)
@@ -3940,6 +4003,13 @@ def run_checks(run, n):
             if not (re.search(r"\.(png|jpe?g|webp|gif)\b", text, re.I) or "no runnable surface" in text.lower()):
                 probs.append(Problem("evidence doc references no screenshot/image and does not declare 'no runnable surface'",
                                      "the evidence doc has no screenshot, and does not say there is nothing to run"))
+            # ALYDAS-553. The browser suite's totals, on a line that names the
+            # suite, or the words saying the project has none: the
+            # instruction alone was skipped.
+            suite = browser_suite_problem(text)
+            if suite is not None:
+                probs.append(Problem(suite, "the evidence doc's browser suite totals do not show it ran green, "
+                                            "or are missing and it does not say there is none"))
     elif n == 8:
         hits = need(f"measurements/*{slug}*review*.md", "review doc")
         if hits and not re.search(r"\b(blocks|fix-now|defer)\b", open(hits[-1]).read(), re.I):

@@ -30,7 +30,7 @@ PIPE="${CLAUDE_PLUGIN_ROOT}/skills/feature-pipeline/scripts/pipeline.py"   # pyt
 | 4 | **Gate: verify the brief** | `references/gates.md` §1 | verdicts appended to the plan | yes |
 | 5 | Dispatch, test-first | §5, `references/tdd.md`, `references/dispatch-contracts.md` | `measurements/<date>-<slug>-S<n>-report.md` with red pasted | per wave |
 | 6 | **Gate: break the guards** | `references/gates.md` §2 | `measurements/<date>-<slug>-residuals.md` | yes |
-| 7 | **Gate: goal achieved** | `references/gates.md` §3; a UI run also measures its screens, `references/ui-gate.md` | `measurements/<date>-<slug>-evidence.md` + screenshots; on a UI run, `measurements/<date>-<slug>-ui-measure-<screen>-<state>.json` | yes |
+| 7 | **Gate: goal achieved** | `references/gates.md` §3; a UI run also measures its screens, `references/ui-gate.md` | `measurements/<date>-<slug>-evidence.md` + screenshots, with the browser suite's totals; on a UI run, `measurements/<date>-<slug>-ui-measure-<screen>-<state>.json` | yes |
 | 8 | **Gate: review the diff** | `references/gates.md` §4; a UI run also runs the UI gate, `references/ui-gate.md` | `measurements/<date>-<slug>-review.md` + `measurements/<date>-<slug>-review.json`, recorded with `review record <slug>`, + fixes; on a UI run, `measurements/<date>-<slug>-ui-gate-report-<screen>.json` | yes |
 | 9 | Finish | §9 | `handoffs/<date>-<slug>-resume.md`, PR text if the repo uses PRs | yes |
 

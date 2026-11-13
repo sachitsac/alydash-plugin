@@ -9245,5 +9245,113 @@ class RunStartCase(HoldHelpers, ScratchRunCase):
         self.assertEqual(desk_refusals(self, bodies[:1]), [None])
 
 
+class Gate7BrowserSuiteCase(ScratchRunCase):
+    """ALYDAS-553. Gate 7 runs the project's browser suite and pastes its
+    totals in the evidence doc, under a line that names it, or says the
+    project has none. `phase 7 done` refuses an evidence doc that does
+    neither, because the instruction alone was skipped."""
+
+    PICTURE = "![The page](screenshots/page.png)\n"
+    LABELLED = "Browser suite (pnpm e2e, final tree at abc1234): 160 passed, 0 failed\n"
+
+    def close_with(self, evidence):
+        self.init_scratch("--hold", "none")
+        self.assertEqual(self.run_pipeline("phase", "scratch", "7", "start").returncode, 0)
+        self.assertEqual(self.run_pipeline("note", "scratch", "7", "--plain", "Said.").returncode, 0)
+        for i in (1, 2, 3, 4):
+            self.assertEqual(self.run_pipeline("step", "scratch", "7", str(i), "done").returncode, 0)
+        os.makedirs(os.path.join(self.root, "measurements"), exist_ok=True)
+        with open(os.path.join(self.root, "measurements", "2026-09-13-scratch-evidence.md"), "w",
+                  encoding="utf-8") as f:
+            f.write("# Evidence\n\n" + evidence)
+        return self.run_pipeline("phase", "scratch", "7", "done")
+
+    def assert_refused(self, out):
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertIn("evidence doc has no browser suite totals", out.stderr)
+        self.assertNotIn("is still to do", out.stderr)
+
+    def test_an_evidence_doc_with_no_browser_suite_totals_is_refused(self):
+        self.assert_refused(self.close_with(self.PICTURE))
+
+    def test_a_labelled_totals_line_passes(self):
+        out = self.close_with(self.PICTURE + "\n" + self.LABELLED)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+    def test_no_browser_suite_passes(self):
+        out = self.close_with(self.PICTURE + "\nThis project has no browser suite.\n")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+    def test_totals_with_no_label_are_refused(self):
+        """Across the other dimension: a count that names no suite is not one."""
+        self.assert_refused(self.close_with(self.PICTURE + "\n160 passed, 0 failed\n"))
+
+    def test_a_label_with_no_number_before_passed_is_refused(self):
+        self.assert_refused(self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e): passed\n"))
+
+    def test_a_label_with_a_count_that_is_not_passed_is_refused(self):
+        self.assert_refused(self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e): not run, 160 tests\n"))
+
+    def test_the_label_and_the_count_on_different_lines_are_refused(self):
+        self.assert_refused(self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e):\n\n160 passed\n"))
+
+    def test_no_browser_suite_inside_another_sentence_is_refused(self):
+        self.assert_refused(self.close_with(self.PICTURE + "\nThe run left no browser suite failure unexplained.\n"))
+
+    def test_a_totals_line_with_nought_passed_is_refused(self):
+        self.assert_told(self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e, final tree at abc1234): 0 passed, 160 failed\n"), "0 passed")
+
+    def test_failures_not_listed_as_unverified_are_refused(self):
+        self.assert_told(self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e, final tree at abc1234): 150 passed, 10 failed\n"), "10 failed")
+
+    def test_the_instructions_template_line_is_refused(self):
+        self.assert_told(self.close_with(self.PICTURE + "\nThe gate asks for a line like:\n\n```\nBrowser suite (pnpm e2e, final tree at <sha>): 160 passed, 0 failed\n```\n"), "names no commit")
+
+    def test_failures_listed_as_unverified_pass(self):
+        out = self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e, final tree at abc1234): 150 passed, 10 failed\n\n"
+                              "The 10 fail on main too and are listed as unverified.\n")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+    # Gate 8 (alydas-545), W1 and W2. A doc that has a totals line is told
+    # what is wrong with it, and never steered to "no browser suite"; words
+    # elsewhere in the doc do not excuse a failing line.
+    FAILING = "Browser suite (pnpm e2e, final tree at abc1234): 158 passed, 3 failed\n"
+
+    def assert_told(self, out, reason):
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertIn(reason, out.stderr)
+        self.assertNotIn("no browser suite totals", out.stderr)
+        self.assertNotIn("say 'no browser suite'", out.stderr)
+
+    def test_unlisted_failures_are_told_as_failures(self):
+        self.assert_told(self.close_with(self.PICTURE + "\n" + self.FAILING), "3 failed")
+
+    def test_nought_passed_is_told_as_nought(self):
+        self.assert_told(self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e, final tree at abc1234): 0 passed, 0 failed\n"),
+                         "0 passed")
+
+    def test_the_template_is_told_it_names_no_commit(self):
+        self.assert_told(self.close_with(self.PICTURE + "\nBrowser suite (pnpm e2e, final tree at <sha>): 160 passed, 0 failed\n"),
+                         "names no commit")
+
+    def test_no_browser_suite_beside_a_failing_line_is_refused(self):
+        self.assert_told(self.close_with(self.PICTURE + "\n" + self.FAILING + "\nThis project has no browser suite.\n"), "3 failed")
+
+    def test_unverified_about_something_else_does_not_excuse_failures(self):
+        self.assert_told(self.close_with(self.PICTURE + "\n" + self.FAILING +
+                                         "\nThe production check stays unverified until the deploy.\n"), "3 failed")
+
+    def test_failures_under_an_unverified_heading_pass(self):
+        out = self.close_with(self.PICTURE + "\n" + self.FAILING +
+                              "\n## Unverified\n\n- The browser suite's 3 failures fail on main too.\n")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+
+    def test_the_screenshot_check_still_stands_beside_it(self):
+        out = self.close_with(self.LABELLED)
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertIn("evidence doc references no screenshot", out.stderr)
+        self.assertNotIn("browser suite totals", out.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

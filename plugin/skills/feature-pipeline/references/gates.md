@@ -161,6 +161,27 @@ a screen with no measurement file cannot pass there. Do not edit a
 measurement file, and do not skip a state because it is awkward to seed: say
 which states were not measured in the evidence doc.
 
+### Run the project's browser suite
+
+Run the project's whole browser suite (its end-to-end or Playwright tests, by
+the project's own command) once on the final tree, and paste its totals in the
+evidence doc under a line that names it:
+
+```
+Browser suite (pnpm e2e, final tree at <sha>): 160 passed, 0 failed
+```
+
+The line names the suite and the commit it ran on, and carries a number before
+`passed`. A failure is fixed, or shown to fail on `main` too and listed in the
+evidence doc as unverified: under an `## Unverified` heading that names the
+browser suite, or on a line that says unverified and gives the number failed.
+The word elsewhere in the doc does not list them. A project with no browser
+suite writes `no browser suite` in the evidence doc instead, and only when it
+has no totals line: beside one, the totals line is what counts. `phase <slug>
+7 done` refuses an evidence doc with neither, and a totals line that names no
+commit, says 0 passed, or carries failures not listed, each with its own
+sentence: the instruction alone was skipped.
+
 ### The failure this exists to catch
 
 Every task complete, every script and config still looking live and correct —
@@ -172,6 +193,7 @@ list, the diff, or the test suite said so. Only loading the page did.
 - [ ] Each `goal.md` evidence item checked by observation, output pasted
 - [ ] Checked in a real browser, not a test harness or a mock
 - [ ] Screenshot captured for each surface
+- [ ] Browser suite run on the final tree, its totals pasted under a `Browser suite (` line, or `no browser suite` written
 - [ ] Console read — no errors, and no silence where a call should have logged
 - [ ] Network confirms the request fired and the row was written
 - [ ] Feature reachable by a user who wasn't told where it is — flags on, routes wired, entry point present
